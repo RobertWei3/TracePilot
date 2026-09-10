@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title><%= title %> · Ashford Mutual — Member Service</title>
+<style>
+  body { font: 14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; color: #1c2430; background: #f4f6f8; }
+  .topbar { background: #16324f; color: #fff; padding: 10px 20px; display: flex; justify-content: space-between; }
+  .topbar span { font-weight: 600; }
+  .wrap { max-width: 880px; margin: 22px auto; padding: 0 16px; }
+  .panel { background: #fff; border: 1px solid #d8dee6; border-radius: 4px; padding: 18px 20px; margin-bottom: 18px; }
+  .panel h2 { margin: 0 0 14px; font-size: 16px; }
+  .fieldrow { margin-bottom: 12px; }
+  .fieldrow div { font-size: 12px; color: #4a5563; margin-bottom: 3px; }
+  input[type=text], input[type=password] { padding: 6px 8px; border: 1px solid #b9c2cd; border-radius: 3px; width: 260px; font: inherit; }
+  button, .btn { padding: 7px 14px; border: 1px solid #16324f; background: #16324f; color: #fff; border-radius: 3px; cursor: pointer; font: inherit; text-decoration: none; display: inline-block; }
+  .btn.secondary, button.secondary { background: #fff; color: #16324f; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e3e8ee; }
+  th { font-size: 12px; color: #4a5563; }
+  .err { color: #a3231d; font-size: 12px; }
+  .banner { background: #e7f4ea; border: 1px solid #9ccfa9; padding: 12px 14px; border-radius: 4px; margin-bottom: 16px; }
+  .kv { display: grid; grid-template-columns: 190px 1fr; gap: 6px 12px; }
+  .kv div:nth-child(odd) { color: #4a5563; font-size: 12px; }
+  .muted { color: #6b7480; font-size: 12px; }
+  .spinner { color: #6b7480; }
+</style>
+</head>
+<body>
+<div class="topbar"><span>Ashford Mutual — Member Service</span><span><%= operator ? operator + " · Sign out" : "Not signed in" %></span></div>
+<div class="wrap">
+<%- body %>
+</div>
+</body>
+</html>

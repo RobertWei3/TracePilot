@@ -60,7 +60,7 @@ test("automation modules do not import DemoBank business logic", () => {
   for (const file of tsFiles(SRC)) {
     const area = moduleArea(file);
     if (area === "demobank") continue;
-    // The CLI is allowed to launch the app process, but not to import its internals.
+    // DemoBank ships its own launcher at src/demobank/cli.ts, so no exemption is needed here.
     for (const spec of importsOf(file)) {
       const local = resolveLocal(file, spec);
       if (local && moduleArea(local) === "demobank") {

@@ -1,0 +1,19 @@
+<% if (notice) { %><div class="banner"><%= notice %></div><% } %>
+<div class="panel">
+  <h2>Member <%= m.member_id %></h2>
+  <div class="kv">
+    <div>Name</div><div><%= m.first_name %> <%= m.last_name %></div>
+    <div>Date of birth</div><div data-sensitive><%= m.dob %></div>
+    <div>Plan</div><div><%= m.plan %></div>
+  </div>
+</div>
+<div class="panel">
+  <h2>Mailing address</h2>
+  <div class="kv">
+    <div>Street</div><div><%= m.line1 %><%= m.line2 ? ", " + m.line2 : "" %></div>
+    <div>City, state, ZIP</div><div><%= m.city %>, <%= m.state %> <%= m.zip %></div>
+    <div>Last updated</div><div><%= m.updated_at ? m.updated_at : "never" %></div>
+  </div>
+  <p><a class="btn" href="/members/<%= m.member_id %>/edit">Edit mailing address</a>
+     <a class="btn secondary" href="/members/<%= m.member_id %>">Edit contact preferences</a></p>
+</div>

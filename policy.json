@@ -1,0 +1,46 @@
+{
+  "allowedOrigins": ["http://localhost:4000"],
+  "allowedRoutes": [
+    "/",
+    "/login",
+    "/search",
+    "/members/*",
+    "/members/*/edit",
+    "/members/*/review",
+    "/members/*/submit",
+    "/confirmation/*",
+    "/static/*"
+  ],
+  "allowedActions": [
+    "navigate",
+    "click",
+    "fill",
+    "select",
+    "press",
+    "waitFor",
+    "assert",
+    "extract",
+    "observe",
+    "approval_gate",
+    "read_back",
+    "give_up"
+  ],
+  "consequentialRoutes": ["/members/*/submit"],
+  "approvedConstants": [],
+  "budgets": {
+    "actionSteps": 25,
+    "observations": 40,
+    "modelCalls": 60,
+    "wallClockMs": 300000,
+    "stepTimeoutMs": 10000
+  },
+  "observation": {
+    "maxElements": 120,
+    "maxTextChars": 12000,
+    "screenshotWidth": 1280,
+    "screenshotHeight": 800,
+    "screenshotQuality": 60
+  },
+  "recovery": { "transientRetries": 2, "reloads": 1, "relogins": 1 },
+  "maskSelectors": ["input[type=password]", "[data-sensitive]"]
+}

@@ -1,0 +1,32 @@
+<div class="panel">
+  <h2>Edit mailing address — <%= m.member_id %></h2>
+  <% if (Object.keys(errors).length) { %><p class="err">Please correct the highlighted fields.</p><% } %>
+  <form method="post" action="/members/<%= m.member_id %>/review">
+    <div class="fieldrow">
+      <label for="l1">Address line 1</label><br>
+      <input id="l1" name="line1" type="text" value="<%= v.line1 %>">
+      <% if (errors.line1) { %><div class="err"><%= errors.line1 %></div><% } %>
+    </div>
+    <div class="fieldrow">
+      <label for="l2">Address line 2</label><br>
+      <input id="l2" name="line2" type="text" value="<%= v.line2 %>">
+    </div>
+    <div class="fieldrow">
+      <div>City</div>
+      <input name="city" type="text" value="<%= v.city %>">
+      <% if (errors.city) { %><div class="err"><%= errors.city %></div><% } %>
+    </div>
+    <div class="fieldrow">
+      <div>State</div>
+      <input name="state" type="text" value="<%= v.state %>">
+      <% if (errors.state) { %><div class="err"><%= errors.state %></div><% } %>
+    </div>
+    <div class="fieldrow">
+      <div>ZIP code</div>
+      <input name="zip" type="text" value="<%= v.zip %>">
+      <% if (errors.zip) { %><div class="err"><%= errors.zip %></div><% } %>
+    </div>
+    <button type="submit">Review changes</button>
+    <a class="btn secondary" href="/members/<%= m.member_id %>">Cancel</a>
+  </form>
+</div>

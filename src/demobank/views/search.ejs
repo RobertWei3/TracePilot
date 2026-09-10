@@ -1,0 +1,32 @@
+<div class="panel">
+  <h2>Member search</h2>
+  <form method="get" action="/search">
+    <div class="fieldrow">
+      <div>Member ID or last name</div>
+      <input name="q" type="text" value="<%= q %>">
+    </div>
+    <button type="submit">Search</button>
+  </form>
+</div>
+<% if (searched) { %>
+<div class="panel">
+  <h2>Results</h2>
+  <% if (results.length === 0) { %>
+    <p>No members matched that search.</p>
+    <p class="muted">Check the member ID and try again.</p>
+  <% } else { %>
+  <table>
+    <tr><th>Member ID</th><th>Name</th><th>Plan</th><th>City</th><th></th></tr>
+    <% results.forEach(function (m) { %>
+    <tr>
+      <td><%= m.member_id %></td>
+      <td><%= m.first_name %> <%= m.last_name %></td>
+      <td><%= m.plan %></td>
+      <td><%= m.city %></td>
+      <td><a class="btn secondary" href="/members/<%= m.member_id %>">View</a></td>
+    </tr>
+    <% }); %>
+  </table>
+  <% } %>
+</div>
+<% } %>
