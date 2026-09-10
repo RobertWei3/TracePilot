@@ -80,7 +80,17 @@ export const Descriptor = z
     nearbyText: z.string().max(120).optional(),
     tagName: z.string().min(1),
     scope: z
-      .object({ containerRole: z.string().optional(), containerName: z.string().optional() })
+      .object({
+        containerRole: z.string().optional(),
+        containerName: z.string().optional(),
+        /**
+         * Name of an input whose resolved value must appear inside the
+         * container. This is what makes "the View link on the row for this
+         * member" expressible without freezing a row position, and it is why a
+         * results table with N identical links stays addressable.
+         */
+        anchorInput: z.string().optional(),
+      })
       .strict()
       .optional(),
     /** Disambiguator when the descriptor legitimately matches several controls. */
