@@ -1,0 +1,761 @@
+{
+  "schemaVersion": "1.0.0",
+  "capabilityId": "demobank.update_mailing_address",
+  "version": 1,
+  "createdAt": "2026-09-10T00:00:00.000Z",
+  "status": "needs_review",
+  "surfaceKind": "web",
+  "tenantId": null,
+  "overrides": null,
+  "origin": "http://localhost:4000",
+  "requires": {
+    "session": {
+      "credentialRef": "demobank.operator",
+      "loginUrl": "/login"
+    }
+  },
+  "inputs": {
+    "member_id": {
+      "type": "string",
+      "description": "Member identifier, e.g. M-1002"
+    },
+    "address": {
+      "type": "object",
+      "properties": {
+        "line1": {
+          "type": "string"
+        },
+        "line2": {
+          "type": "string",
+          "optional": true
+        },
+        "city": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "zip": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "outputs": {
+    "confirmation_id": {
+      "type": "string",
+      "pattern": "^CONF-[A-Z0-9]{8}$",
+      "required": true,
+      "source": {
+        "stepId": "s14",
+        "extract": {
+          "kind": "text",
+          "regex": "CONF-[A-Z0-9]{8}"
+        }
+      }
+    }
+  },
+  "businessOutcomes": [
+    {
+      "code": "MEMBER_NOT_FOUND",
+      "when": {
+        "kind": "text_contains",
+        "value": {
+          "const": "No members matched that search."
+        },
+        "describes": "the application searched successfully and found nobody"
+      }
+    },
+    {
+      "code": "ADDRESS_REJECTED",
+      "when": {
+        "kind": "text_contains",
+        "value": {
+          "const": "Please correct the highlighted fields."
+        },
+        "describes": "field validation refused the submitted address"
+      }
+    }
+  ],
+  "expectedDialogs": [],
+  "steps": [
+    {
+      "stepId": "s01",
+      "index": 1,
+      "phase": "navigate",
+      "action": "navigate",
+      "effect": "reversible",
+      "value": {
+        "const": "/"
+      },
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/$",
+        "timeoutMs": 10000
+      },
+      "reason": "start at the member search screen",
+      "checks": [
+        {
+          "kind": "element_exists",
+          "target": {
+            "role": "button",
+            "accessibleName": "Search",
+            "tagName": "button",
+            "scope": {
+              "containerRole": "region",
+              "containerName": "Member search"
+            },
+            "candidates": [
+              {
+                "rank": 1,
+                "strategy": "role+name",
+                "expr": "button|Search"
+              }
+            ]
+          }
+        }
+      ],
+      "authoredBy": "human"
+    },
+    {
+      "stepId": "s02",
+      "index": 2,
+      "phase": "search",
+      "action": "fill",
+      "effect": "reversible",
+      "reason": "enter the member identifier in the search box",
+      "value": {
+        "input": "member_id"
+      },
+      "target": {
+        "role": "textbox",
+        "nearbyText": "Member ID or last name",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "Member ID or last name"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s03",
+      "index": 3,
+      "phase": "search",
+      "action": "click",
+      "effect": "reversible",
+      "reason": "run the search",
+      "target": {
+        "role": "button",
+        "accessibleName": "Search",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Search"
+          }
+        ]
+      },
+      "waitFor": {
+        "kind": "element",
+        "timeoutMs": 15000,
+        "target": {
+          "role": "heading",
+          "accessibleName": "Results",
+          "tagName": "h2",
+          "candidates": [
+            {
+              "rank": 1,
+              "strategy": "role+name",
+              "expr": "heading|Results"
+            }
+          ]
+        }
+      },
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s04",
+      "index": 4,
+      "phase": "details",
+      "action": "click",
+      "effect": "reversible",
+      "reason": "open the matching member from the results row",
+      "target": {
+        "role": "link",
+        "accessibleName": "View",
+        "tagName": "a",
+        "scope": {
+          "anchorInput": "member_id"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "link|View"
+          }
+        ]
+      },
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/members/{member_id}$",
+        "timeoutMs": 10000
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/search",
+          "describes": "the results screen is showing"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}$",
+          "describes": "the requested member's record is open"
+        }
+      ],
+      "authoredBy": "human"
+    },
+    {
+      "stepId": "s05",
+      "index": 5,
+      "phase": "edit",
+      "action": "click",
+      "effect": "reversible",
+      "reason": "open the mailing address editor",
+      "target": {
+        "role": "link",
+        "accessibleName": "Edit mailing address",
+        "tagName": "a",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "link|Edit mailing address"
+          }
+        ]
+      },
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/members/{member_id}/edit$",
+        "timeoutMs": 10000
+      },
+      "checks": [
+        {
+          "kind": "element_exists",
+          "target": {
+            "role": "textbox",
+            "accessibleName": "Address line 1",
+            "labelText": "Address line 1",
+            "tagName": "input",
+            "scope": {
+              "containerRole": "region",
+              "containerName": "Edit mailing address"
+            },
+            "candidates": [
+              {
+                "rank": 1,
+                "strategy": "role+name",
+                "expr": "textbox|Address line 1"
+              }
+            ]
+          },
+          "describes": "the editable address form is present"
+        }
+      ],
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s06",
+      "index": 6,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "reason": "set the street address",
+      "value": {
+        "input": "address.line1"
+      },
+      "target": {
+        "role": "textbox",
+        "accessibleName": "Address line 1",
+        "labelText": "Address line 1",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "textbox|Address line 1"
+          },
+          {
+            "rank": 2,
+            "strategy": "label",
+            "expr": "Address line 1"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$",
+          "describes": "the editor for the right member is open"
+        }
+      ],
+      "authoredBy": "human"
+    },
+    {
+      "stepId": "s07",
+      "index": 7,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "reason": "set the secondary address line",
+      "value": {
+        "input": "address.line2"
+      },
+      "target": {
+        "role": "textbox",
+        "accessibleName": "Address line 2",
+        "labelText": "Address line 2",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "textbox|Address line 2"
+          },
+          {
+            "rank": 2,
+            "strategy": "label",
+            "expr": "Address line 2"
+          }
+        ]
+      },
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s08",
+      "index": 8,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "reason": "set the city, whose caption has no label association",
+      "value": {
+        "input": "address.city"
+      },
+      "target": {
+        "role": "textbox",
+        "nearbyText": "City",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "City"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s09",
+      "index": 9,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "reason": "set the state code",
+      "value": {
+        "transform": {
+          "op": "upper",
+          "arg": {
+            "input": "address.state"
+          }
+        }
+      },
+      "target": {
+        "role": "textbox",
+        "nearbyText": "State",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "State"
+          }
+        ]
+      },
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s10",
+      "index": 10,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "reason": "set the ZIP code",
+      "value": {
+        "input": "address.zip"
+      },
+      "target": {
+        "role": "textbox",
+        "nearbyText": "ZIP code",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "ZIP code"
+          }
+        ]
+      },
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s11",
+      "index": 11,
+      "phase": "review",
+      "action": "click",
+      "effect": "reversible",
+      "reason": "move to the review screen so the change can be checked before writing",
+      "target": {
+        "role": "button",
+        "accessibleName": "Review changes",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Review changes"
+          }
+        ]
+      },
+      "waitFor": {
+        "kind": "element",
+        "timeoutMs": 10000,
+        "target": {
+          "role": "button",
+          "accessibleName": "Submit change",
+          "tagName": "button",
+          "candidates": [
+            {
+              "rank": 1,
+              "strategy": "role+name",
+              "expr": "button|Submit change"
+            }
+          ]
+        }
+      },
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.line1}"
+            }
+          },
+          "describes": "the review screen shows the street address that is about to be written"
+        },
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.city}, {address.state} {address.zip}"
+            }
+          },
+          "describes": "the review screen shows the composed city, state and ZIP"
+        }
+      ],
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s12",
+      "index": 12,
+      "phase": "review",
+      "action": "approval_gate",
+      "effect": "reversible",
+      "reason": "a person must authorise the change before it is written",
+      "diffFields": [
+        {
+          "label": "Current address",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.line1}, {address.city}, {address.state} {address.zip}"
+            }
+          },
+          "currentFrom": {
+            "role": "generic",
+            "tagName": "div",
+            "nearbyText": "Current address",
+            "scope": {
+              "containerRole": "region",
+              "containerName": "Review mailing address change"
+            },
+            "candidates": [
+              {
+                "rank": 1,
+                "strategy": "text-scoped",
+                "expr": "Current address"
+              }
+            ]
+          }
+        }
+      ],
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/review$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s13",
+      "index": 13,
+      "phase": "submit",
+      "action": "click",
+      "effect": "consequential",
+      "reason": "write the change to the member record",
+      "target": {
+        "role": "button",
+        "accessibleName": "Submit change",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Review mailing address change"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Submit change"
+          }
+        ]
+      },
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/confirmation/CONF-",
+        "timeoutMs": 10000
+      },
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "const": "Mailing address updated."
+          },
+          "describes": "the application accepted the change"
+        }
+      ],
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/review$",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s14",
+      "index": 14,
+      "phase": "verify",
+      "action": "extract",
+      "effect": "reversible",
+      "reason": "read the confirmation identifier the application issued",
+      "extractAs": "confirmation_id",
+      "target": {
+        "role": "generic",
+        "tagName": "span",
+        "nearbyText": "Confirmation ID",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Confirmation"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "Confirmation ID"
+          }
+        ]
+      },
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "const": "CONF-"
+          },
+          "describes": "a confirmation identifier is displayed"
+        }
+      ],
+      "authoredBy": "human",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/confirmation/CONF-",
+          "describes": "the step runs on the screen it was discovered on"
+        }
+      ]
+    },
+    {
+      "stepId": "s15",
+      "index": 15,
+      "phase": "verify",
+      "action": "read_back",
+      "effect": "reversible",
+      "reason": "re-read the member record so the write is verified, not merely accepted",
+      "value": {
+        "transform": {
+          "op": "template",
+          "format": "/members/{member_id}"
+        }
+      },
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/members/{member_id}$",
+        "timeoutMs": 10000
+      },
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.city}, {address.state} {address.zip}"
+            }
+          },
+          "describes": "the stored address now matches the requested address"
+        },
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.line1}"
+            }
+          },
+          "describes": "the stored street address matches the requested one"
+        }
+      ],
+      "authoredBy": "human"
+    }
+  ],
+  "provenance": {
+    "runId": "hand-authored-oracle",
+    "model": "none (hand-authored fixture)",
+    "authoredBy": {
+      "agent": 0,
+      "human": 15
+    },
+    "appFingerprint": "sha256:fixture"
+  }
+}

@@ -45,7 +45,19 @@ export const Step = z
     /** Which output name this step binds, for action === "extract". */
     extractAs: z.string().optional(),
     /** Fields to render in the pending-change diff, for action === "approval_gate". */
-    diffFields: z.array(z.object({ label: z.string(), value: ValueRef }).strict()).optional(),
+    diffFields: z
+      .array(
+        z
+          .object({
+            label: z.string(),
+            /** The value about to be written, as a reference. */
+            value: ValueRef,
+            /** Where the current value can be read, so the diff shows both sides. */
+            currentFrom: Descriptor.optional(),
+          })
+          .strict(),
+      )
+      .optional(),
     authoredBy: z.enum(["agent", "human"]).default("agent"),
     /** True when a recorded human step's descriptor could not be re-resolved. */
     unresolved: z.boolean().default(false),

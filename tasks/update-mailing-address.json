@@ -1,0 +1,30 @@
+{
+  "taskId": "demobank.update_mailing_address",
+  "goal": "Update a member's mailing address in the member-service application. Find the member, open their record, change the mailing address to the supplied one, review the change, obtain approval, submit it, then confirm the update was actually stored and report the confirmation identifier the application issues.",
+  "targetUrl": "http://localhost:4000/",
+  "inputs": {
+    "member_id": {
+      "type": "string",
+      "description": "The member's identifier, in the form M-0000. Search accepts it directly."
+    },
+    "address": {
+      "type": "object",
+      "description": "The new mailing address, one value per form field.",
+      "properties": {
+        "line1": { "type": "string", "description": "Street address" },
+        "line2": { "type": "string", "optional": true, "description": "Apartment or suite, may be empty" },
+        "city": { "type": "string" },
+        "state": { "type": "string", "description": "Two-letter state code" },
+        "zip": { "type": "string", "description": "Five-digit ZIP code" }
+      }
+    }
+  },
+  "outputs": {
+    "confirmation_id": {
+      "type": "string",
+      "pattern": "^CONF-[A-Z0-9]{8}$",
+      "description": "The confirmation identifier shown after a successful submission"
+    }
+  },
+  "requires": { "session": { "credentialRef": "demobank.operator" } }
+}

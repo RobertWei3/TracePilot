@@ -33,7 +33,11 @@ export const Check = z
       "text_equals",
       "text_contains",
     ]),
-    /** Required for every kind except url_matches. */
+    /**
+     * Required for element_exists / element_absent. For the text kinds it is
+     * optional: with no target the assertion is made against the visible page,
+     * which is what a person actually checks on a confirmation screen.
+     */
     target: z.lazy((): z.ZodTypeAny => Descriptor).optional(),
     /** Regex source, for url_matches. */
     pattern: z.string().optional(),
@@ -44,7 +48,7 @@ export const Check = z
   })
   .strict()
   .superRefine((c, ctx) => {
-    const needsTarget = c.kind !== "url_matches";
+    const needsTarget = c.kind === "element_exists" || c.kind === "element_absent";
     if (needsTarget && !c.target) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${c.kind} requires a target` });
     }

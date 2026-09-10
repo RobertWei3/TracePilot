@@ -24,6 +24,10 @@ function sessionOf(req: FastifyRequest): Session | undefined {
   if (!sid) return undefined;
   const s = sessions.get(sid);
   if (!s) return undefined;
+  if (scenarios.consumeExpiry()) {
+    sessions.delete(sid);
+    return undefined;
+  }
   const ttlMs = scenarios.get().session_ttl * 1000;
   if (Date.now() - s.createdAt > ttlMs) {
     sessions.delete(sid);
@@ -63,11 +67,14 @@ export function build(): FastifyInstance {
   };
 
   app.get("/", async (req, reply) => {
-    if (!sessionOf(req)) return reply.redirect("/login");
+    // Resolved once: calling sessionOf twice would consume the session check
+    // twice and can dereference a session that expired between the two calls.
+    const session = sessionOf(req);
+    if (!session) return reply.redirect("/login");
     return reply.type("text/html").send(
       await render("search", {
         title: "Member search",
-        operator: sessionOf(req)!.operator,
+        operator: session.operator,
         q: "",
         searched: false,
         results: [],
@@ -269,6 +276,12 @@ export function build(): FastifyInstance {
   });
 
   app.get("/_admin/scenario", async (_req, reply) => reply.send(scenarios.get()));
+
+  /** Lets a test assert that a workflow wrote exactly once. */
+  app.get("/_admin/confirmations", async (_req, reply) => {
+    const rows = conn.prepare("SELECT confirmation_id, member_id FROM confirmations").all();
+    return reply.send({ count: rows.length, rows });
+  });
 
   app.get("/_admin/member/:id", async (req, reply) => {
     const m = db.getMember(conn, (req.params as { id: string }).id);

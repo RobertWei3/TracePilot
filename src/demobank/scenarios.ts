@@ -12,6 +12,13 @@ export type Scenarios = {
   force_403: boolean;
   /** Adds a native confirm() dialog on submit, undeclared by any artifact. */
   extra_dialog: boolean;
+  /**
+   * Invalidates the session once, on the Nth authenticated request, then
+   * disarms. 0 is off. A short session_ttl expires repeatedly, which cannot
+   * show a *bounded* recovery succeeding; this places a single expiry on a
+   * chosen screen, which can.
+   */
+  expire_at_request: number;
 };
 
 const DEFAULTS: Scenarios = {
@@ -19,6 +26,7 @@ const DEFAULTS: Scenarios = {
   slow_search: false,
   force_403: false,
   extra_dialog: false,
+  expire_at_request: 0,
 };
 
 let current: Scenarios = { ...DEFAULTS };
@@ -29,10 +37,29 @@ export function get(): Scenarios {
 
 export function resetScenarios(): void {
   current = { ...DEFAULTS };
+  authedRequests = 0;
+}
+
+let authedRequests = 0;
+
+/** Counts authenticated requests and reports whether this one should expire. */
+export function consumeExpiry(): boolean {
+  if (current.expire_at_request <= 0) return false;
+  authedRequests += 1;
+  if (authedRequests !== current.expire_at_request) return false;
+  current = { ...current, expire_at_request: 0 };
+  return true;
 }
 
 export function set(key: string, raw: string): Scenarios {
   if (!(key in DEFAULTS)) throw new Error(`unknown scenario: ${key}`);
+  if (key === "expire_at_request") {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) throw new Error("expire_at_request must be a non-negative integer");
+    authedRequests = 0;
+    current = { ...current, expire_at_request: n };
+    return current;
+  }
   if (key === "session_ttl") {
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) throw new Error("session_ttl must be a positive number");

@@ -12,6 +12,7 @@ export type TestApp = {
   reset: () => Promise<void>;
   scenario: (key: string, value: string) => Promise<void>;
   member: (id: string) => Promise<Record<string, unknown> | null>;
+  confirmations: () => Promise<{ count: number; rows: { member_id: string }[] }>;
   stop: () => Promise<void>;
 };
 
@@ -62,6 +63,10 @@ export async function startApp(): Promise<TestApp> {
     member: async (id) => {
       const res = await fetch(`${baseUrl}/_admin/member/${id}`);
       return res.ok ? ((await res.json()) as Record<string, unknown>) : null;
+    },
+    confirmations: async () => {
+      const res = await fetch(`${baseUrl}/_admin/confirmations`);
+      return (await res.json()) as { count: number; rows: { member_id: string }[] };
     },
     stop: async () => {
       await app.close();
