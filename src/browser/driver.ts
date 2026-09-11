@@ -3,7 +3,12 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Descriptor, Policy } from "../contracts/index.js";
 import { SafetyViolation, checkAction, checkUrl, registerSecret } from "../safety/index.js";
-import { buildObservation, type Observation, type ObserveConfig } from "./observe.js";
+import {
+  MIN_TAGGED_VALUE_LENGTH,
+  buildObservation,
+  type Observation,
+  type ObserveConfig,
+} from "./observe.js";
 import { resolve, summarize, type Attempt } from "./descriptor.js";
 
 export type SurfaceOptions = {
@@ -14,6 +19,9 @@ export type SurfaceOptions = {
   inputs?: Record<string, string>;
   secrets?: Record<string, string>;
 };
+
+/** Mask fill. Exported so a test can assert on pixels rather than on intent. */
+export const MASK_COLOR = "#222222";
 
 export type DialogRecord = { message: string; type: string; declared: boolean; at: string };
 
@@ -138,12 +146,31 @@ export class Surface {
       obsId: `obs${++this.obsCounter}`,
       maxElements: this.policy.observation.maxElements,
       maxTextChars: this.policy.observation.maxTextChars,
-      // Tagging happens inside the page, so values never leave the browser.
+      // Tagging and redaction both happen inside the page, so neither an input
+      // value nor a subject's record data leaves the browser.
       inputTags: Object.entries(this.inputs).map(([name, value]) => ({ name, value })),
+      minTagLength: MIN_TAGGED_VALUE_LENGTH,
+      sensitiveSelectors: this.policy.observation.sensitiveSelectors,
+      anchorInputs: this.policy.observation.anchorInputs,
       ...(opts.regionId ? { regionId: opts.regionId } : {}),
       ...(opts.offset ? { offset: opts.offset } : {}),
     };
     return this.page.evaluate(buildObservation, cfg);
+  }
+
+  /**
+   * Clears the redaction markers the observation builder stamped. Capture reads
+   * them, so they are stripped once the image exists rather than left on the
+   * page for the rest of the run.
+   */
+  private async clearRedactionMarks(): Promise<void> {
+    await this.page
+      .evaluate(() => {
+        for (const el of Array.from(document.querySelectorAll("[data-tp-redacted]"))) {
+          el.removeAttribute("data-tp-redacted");
+        }
+      })
+      .catch(() => {});
   }
 
   /** Resolve a descriptor to a live element, reporting which rank won. */
@@ -214,24 +241,34 @@ export class Surface {
    */
   async screenshot(): Promise<{ buffer: Buffer } | { buffer: null; omittedReason: string }> {
     try {
-      const masks = this.policy.maskSelectors.map((s) => this.page.locator(s));
+      // Redacting the text channel while leaving the same data visible in the
+      // image would be worse than not redacting at all, because the claim is
+      // what a reader relies on. The observation builder marks what it hid; the
+      // mask list picks those up alongside the statically configured selectors.
+      const selectors = [...this.policy.maskSelectors, "[data-tp-redacted]"];
+      const masks = selectors.map((s) => this.page.locator(s));
       // A sensitive control that no mask covers means capture is not safe.
       const sensitive = await this.page.locator("input[type=password], [data-sensitive]").count();
       if (sensitive > 0) {
         let covered = 0;
         for (const m of masks) covered += await m.count();
-        if (covered < sensitive) return { buffer: null, omittedReason: "mask_targets_unresolved" };
+        if (covered < sensitive) {
+          await this.clearRedactionMarks();
+          return { buffer: null, omittedReason: "mask_targets_unresolved" };
+        }
       }
       const buffer = await this.page.screenshot({
         type: "jpeg",
         quality: this.policy.observation.screenshotQuality,
         mask: masks,
-        maskColor: "#222222",
+        maskColor: MASK_COLOR,
         timeout: 5000,
       });
       return { buffer };
     } catch {
       return { buffer: null, omittedReason: "capture_failed" };
+    } finally {
+      await this.clearRedactionMarks();
     }
   }
 

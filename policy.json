@@ -1,5 +1,7 @@
 {
-  "allowedOrigins": ["http://localhost:4000"],
+  "allowedOrigins": [
+    "http://localhost:4000"
+  ],
   "allowedRoutes": [
     "/",
     "/login",
@@ -23,24 +25,43 @@
     "observe",
     "approval_gate",
     "read_back",
-    "give_up"
+    "give_up",
+    "request_approval",
+    "business_outcome",
+    "done"
   ],
-  "consequentialRoutes": ["/members/*/submit"],
+  "consequentialRoutes": [
+    "/members/*/submit"
+  ],
   "approvedConstants": [],
   "budgets": {
     "actionSteps": 25,
     "observations": 40,
     "modelCalls": 60,
     "wallClockMs": 300000,
-    "stepTimeoutMs": 10000
+    "stepTimeoutMs": 10000,
+    "consecutiveRejections": 4
   },
   "observation": {
     "maxElements": 120,
     "maxTextChars": 12000,
     "screenshotWidth": 1280,
     "screenshotHeight": 800,
-    "screenshotQuality": 60
+    "screenshotQuality": 60,
+    "sensitiveSelectors": [
+      "[data-sensitive]"
+    ],
+    "anchorInputs": [
+      "member_id"
+    ]
   },
-  "recovery": { "transientRetries": 2, "reloads": 1, "relogins": 1 },
-  "maskSelectors": ["input[type=password]", "[data-sensitive]"]
+  "recovery": {
+    "transientRetries": 2,
+    "reloads": 1,
+    "relogins": 1
+  },
+  "maskSelectors": [
+    "input[type=password]",
+    "[data-sensitive]"
+  ]
 }

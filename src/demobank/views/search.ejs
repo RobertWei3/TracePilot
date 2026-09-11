@@ -20,9 +20,9 @@
     <% results.forEach(function (m) { %>
     <tr>
       <td><%= m.member_id %></td>
-      <td><%= m.first_name %> <%= m.last_name %></td>
-      <td><%= m.plan %></td>
-      <td><%= m.city %></td>
+      <td data-sensitive><%= m.first_name %> <%= m.last_name %></td>
+      <td data-sensitive><%= m.plan %></td>
+      <td data-sensitive><%= m.city %></td>
       <td><a class="btn secondary" href="/members/<%= m.member_id %>">View</a></td>
     </tr>
     <% }); %>

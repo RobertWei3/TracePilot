@@ -30,6 +30,8 @@ export const ReasonCode = z.enum([
   "WALL_CLOCK_EXHAUSTED",
   "DEAD_END",
   "SCHEMA_INVALID",
+  /** A model-bound payload failed redaction and was never sent. */
+  "PAYLOAD_BLOCKED",
 ]);
 export type ReasonCode = z.infer<typeof ReasonCode>;
 

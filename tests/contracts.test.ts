@@ -101,6 +101,25 @@ test("a capability with no post-submit check fails compilation", () => {
   assert.match(JSON.stringify(res.error), /unearned success/);
 });
 
+test("a url pattern that cannot compile is rejected at validation", () => {
+  // Caught here, a malformed artifact never launches a browser. Caught at the
+  // step that runs it, the regex throws out of the executor, which returns no
+  // result and writes no result.json.
+  const cap = baseCap();
+  const verify = cap.steps.find((s) => s.action === "extract")!;
+  (verify as { checks: unknown[] }).checks = [{ kind: "url_matches", pattern: "/confirmation/(" }];
+  const res = Capability.safeParse(cap);
+  assert.equal(res.success, false);
+  assert.match(JSON.stringify(res.error), /not a valid regular expression/);
+});
+
+test("a url pattern carrying input placeholders still validates", () => {
+  const cap = baseCap();
+  const verify = cap.steps.find((s) => s.action === "extract")!;
+  (verify as { checks: unknown[] }).checks = [{ kind: "url_matches", pattern: "/members/{member_id}$" }];
+  assert.equal(Capability.safeParse(cap).success, true);
+});
+
 test("human-authored steps force needs_review", () => {
   const cap = baseCap();
   cap.steps = cap.steps.map((s) => (s.stepId === "s02" ? { ...s, authoredBy: "human" as const } : s));

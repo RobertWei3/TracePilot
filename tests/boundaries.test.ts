@@ -81,3 +81,25 @@ test("compiler does not reach the LLM client", () => {
   }
   assert.deepEqual(offenders, [], `compilation must be deterministic:\n${offenders.join("\n")}`);
 });
+
+test("exactly one module reaches an LLM SDK", () => {
+  // The converse of the rule above. Replay staying LLM-free is only meaningful
+  // if the dependency is confined somewhere nameable, rather than spreading to
+  // wherever a model call was convenient.
+  const importers = tsFiles(SRC)
+    .filter((file) => importsOf(file).some((spec) => spec.includes("@anthropic-ai")))
+    .map((file) => path.relative(".", file));
+  assert.deepEqual(importers, ["src/discovery/model.ts"]);
+});
+
+test("the payload boundary is the only thing that renders an observation for a model", () => {
+  // buildModelPayload runs the redaction guards. A second path from an
+  // observation to a model prompt would bypass them, so the renderer has
+  // exactly one caller by construction.
+  const sanctioned = [path.join("discovery", "payload.ts"), path.join("discovery", "prompt.ts")];
+  const callers = tsFiles(SRC)
+    .filter((file) => !sanctioned.some((s) => file.endsWith(s)))
+    .filter((file) => /(?<!function\s)\brenderObservation\s*\(/.test(readFileSync(file, "utf8")))
+    .map((file) => path.relative(".", file));
+  assert.deepEqual(callers, [], `renderObservation must be reached through buildModelPayload`);
+});

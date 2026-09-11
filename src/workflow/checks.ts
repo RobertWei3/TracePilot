@@ -1,6 +1,6 @@
 import type { Check } from "../contracts/index.js";
 import { summarize, type Surface } from "../browser/index.js";
-import { describeRef, resolveValue, type ResolveContext } from "./values.js";
+import { describeRef, resolveValue, UnresolvableValue, type ResolveContext } from "./values.js";
 
 export type CheckOutcome = {
   ok: boolean;
@@ -25,12 +25,30 @@ export async function evaluateCheck(
       const pattern = check.pattern!;
       const url = surface.currentUrl();
       // Patterns may reference inputs, so a URL check follows the parameter.
-      const expanded = pattern.replace(/\{([^}]+)\}/g, (whole, name: string) => ctx.inputs[name] ?? whole);
-      return {
-        ok: new RegExp(expanded).test(url),
-        expected: `url matches /${pattern}/`,
-        observed: url,
-      };
+      // An unknown name is a broken reference, not a literal: left as-is it
+      // would silently compile to a pattern that can never match, and the run
+      // would report a mysterious check failure instead of a bad artifact.
+      const expanded = pattern.replace(/\{([^}]+)\}/g, (_whole, name: string) => {
+        const value = ctx.inputs[name];
+        if (value === undefined) {
+          throw new UnresolvableValue(`url pattern references unknown input "${name}"`);
+        }
+        return value;
+      });
+      let re: RegExp;
+      try {
+        re = new RegExp(expanded);
+      } catch (e) {
+        // A pattern that does not compile is a defect in the artifact. It must
+        // surface as a failed check rather than as an exception escaping the
+        // executor, which returns no result and writes no result.json.
+        return {
+          ok: false,
+          expected: `url matches /${pattern}/`,
+          observed: `pattern is not a valid regular expression: ${e instanceof Error ? e.message : "unknown"}`,
+        };
+      }
+      return { ok: re.test(url), expected: `url matches /${pattern}/`, observed: url };
     }
     case "element_exists": {
       const res = await surface.locate(check.target!);
@@ -42,10 +60,26 @@ export async function evaluateCheck(
     }
     case "element_absent": {
       const res = await surface.locate(check.target!, 1500);
+      // `locate` reports failure both for "nothing matched" and for "matched
+      // several, so no unique target". Treating that failure as absence is
+      // unsafe in the one direction that matters: an ambiguous descriptor over
+      // a control that is plainly still on the page would report the page
+      // cleared when it has not. Absence therefore requires that no candidate
+      // matched anything at all -- the exact dual of element_exists, which
+      // succeeds at whichever rank resolves.
+      const matched = res.tried.reduce(
+        (most, t) => (typeof t.matches === "number" && t.matches > most ? t.matches : most),
+        0,
+      );
+      const present = res.ok || matched > 0;
       return {
-        ok: !res.ok,
+        ok: !present,
         expected: `${summarize(check.target!)} is absent`,
-        observed: res.ok ? "present" : "absent",
+        observed: present
+          ? matched > 1
+            ? `present (${matched} matches, no unique target)`
+            : "present"
+          : "absent",
       };
     }
     case "text_equals":

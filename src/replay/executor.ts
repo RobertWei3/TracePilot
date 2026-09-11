@@ -13,6 +13,7 @@ import { summarize, type Surface } from "../browser/index.js";
 import type { BudgetLedger, RunStore } from "../observability/index.js";
 import type { ControlLedger, OperatorConsole } from "../handoff/index.js";
 import { chooseRewind } from "./rewind.js";
+import type { ApprovalMode } from "../workflow/index.js";
 import {
   describeRef,
   evaluateAll,
@@ -22,9 +23,7 @@ import {
   type ResolveContext,
 } from "../workflow/index.js";
 
-export type ApprovalMode =
-  | { mode: "interactive" }
-  | { mode: "pre_approved"; approvedBy: string; at: string };
+export type { ApprovalMode } from "../workflow/index.js";
 
 export type ReplayOptions = {
   capability: Capability;

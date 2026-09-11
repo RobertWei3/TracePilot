@@ -11,6 +11,8 @@ export type TestApp = {
   profileDir: string;
   reset: () => Promise<void>;
   scenario: (key: string, value: string) => Promise<void>;
+  /** Plants distinctive canary values so a leak scan can be unambiguous. */
+  setMember: (id: string, fields: Record<string, string>) => Promise<void>;
   member: (id: string) => Promise<Record<string, unknown> | null>;
   confirmations: () => Promise<{ count: number; rows: { member_id: string }[] }>;
   stop: () => Promise<void>;
@@ -42,6 +44,14 @@ export async function startApp(): Promise<TestApp> {
   dbmod.reset(seed);
   seed.close();
 
+  // Scenario state lives in a module singleton that every app in this process
+  // shares, so a scenario left on by one test would arm the next one.
+  await fetch(`${baseUrl}/_admin/reset`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+
   const base = loadPolicy();
   const policy: Policy = { ...base, allowedOrigins: [baseUrl] };
 
@@ -60,6 +70,7 @@ export async function startApp(): Promise<TestApp> {
     profileDir: path.join(dir, "profile"),
     reset: () => post("/_admin/reset", {}),
     scenario: (key, value) => post("/_admin/scenario", { key, value }),
+    setMember: (id, fields) => post(`/_admin/member/${id}`, fields),
     member: async (id) => {
       const res = await fetch(`${baseUrl}/_admin/member/${id}`);
       return res.ok ? ((await res.json()) as Record<string, unknown>) : null;

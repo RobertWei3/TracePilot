@@ -9,7 +9,7 @@
   "scripts": {
     "tp": "tsx src/cli/tracepilot.ts",
     "demobank": "tsx src/demobank/cli.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test --test-concurrency=4 tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
