@@ -1,5 +1,10 @@
 import type { Descriptor } from "../contracts/index.js";
-import { describe as describeEl, type ObservedElement, type Surface } from "../browser/index.js";
+import {
+  MIN_TAGGED_VALUE_LENGTH,
+  describe as describeEl,
+  type ObservedElement,
+  type Surface,
+} from "../browser/index.js";
 
 export type RecordedAction = {
   seq: number;
@@ -26,7 +31,10 @@ export type RecordedAction = {
  * describe, so drift between the two shows up as a test failure rather than a
  * wrong artifact.
  */
-function installRecorder(cfg: { inputTags: { name: string; value: string }[] }): void {
+function installRecorder(cfg: {
+  inputTags: { name: string; value: string }[];
+  minTagLength: number;
+}): void {
   type Rec = Record<string, unknown>;
   const w = window as unknown as { __tpRecorded?: Rec[]; __tpInstalled?: boolean };
   if (w.__tpInstalled) return;
@@ -37,7 +45,7 @@ function installRecorder(cfg: { inputTags: { name: string; value: string }[] }):
   const tag = (s: string): string => {
     let out = s;
     for (const t of cfg.inputTags) {
-      if (!t.value || t.value.length < 3) continue;
+      if (!t.value || t.value.length < cfg.minTagLength) continue;
       out = out.split(t.value).join("<input:" + t.name + ">");
     }
     return out;
@@ -172,7 +180,10 @@ export class HumanRecorder {
 
   /** Arms the recorder on the current page and every page that follows. */
   async start(): Promise<void> {
-    const cfg = { inputTags: Object.entries(this.inputs).map(([name, value]) => ({ name, value })) };
+    const cfg = {
+      inputTags: Object.entries(this.inputs).map(([name, value]) => ({ name, value })),
+      minTagLength: MIN_TAGGED_VALUE_LENGTH,
+    };
     await this.surface.context.addInitScript(installRecorder, cfg);
     await this.surface.page.evaluate(installRecorder, cfg);
   }

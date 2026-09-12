@@ -20,6 +20,13 @@ export const Policy = z
         modelCalls: z.number().int().min(1),
         wallClockMs: z.number().int().min(1000),
         stepTimeoutMs: z.number().int().min(500),
+        /**
+         * How many proposals may be refused in a row before the run is
+         * declared stuck. Without it a model repeating one invalid action
+         * grinds the model-call budget into rejections and the run reports
+         * budget exhaustion, which hides the actual condition.
+         */
+        consecutiveRejections: z.number().int().min(1).max(20).default(4),
       })
       .strict(),
     observation: z
@@ -29,6 +36,18 @@ export const Policy = z
         screenshotWidth: z.number().int().min(320),
         screenshotHeight: z.number().int().min(240),
         screenshotQuality: z.number().int().min(10).max(100),
+        /**
+         * Surface-specific. Elements matching these selectors never have their
+         * text or value rendered into a model payload. This is an explicit,
+         * configured list for one application -- not PII detection.
+         */
+        sensitiveSelectors: z.array(z.string()).default([]),
+        /**
+         * Inputs whose value identifies the record being worked on. A row
+         * carrying one is the row this run is entitled to see; every other row
+         * in a list is another subject's data and is redacted.
+         */
+        anchorInputs: z.array(z.string()).default([]),
       })
       .strict(),
     recovery: z

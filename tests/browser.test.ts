@@ -61,9 +61,23 @@ test("input values are tagged in-page and never appear in an observation", async
 
 test("an ambiguous control resolves via a parameterized row anchor", async () => {
   await surface.navigate(`${app.baseUrl}/search?q=Dana`);
+  // The ambiguity that matters is in the DOM, which is what resolution faces.
+  assert.equal(
+    await surface.page.getByRole("link", { name: "View", exact: true }).count(),
+    2,
+    "the fixture should present two identical links",
+  );
+
   const obs = await surface.observe();
+  // Only the row this run is working on is readable; the other member's row is
+  // redacted but still listed, so it stays addressable without being legible.
   const views = obs.elements.filter((e) => e.role === "link" && e.name === "View");
-  assert.equal(views.length, 2, "the fixture should present two identical links");
+  assert.equal(views.length, 1, "only the anchored row's control should be named");
+  assert.equal(
+    obs.elements.filter((e) => e.role === "link" && e.redacted).length,
+    1,
+    "the other member's control should be present but redacted",
+  );
 
   const anchored = describeEl(views[0]!, { anchorInput: "member_id" });
   const res = await surface.locate(anchored);

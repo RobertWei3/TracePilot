@@ -52,8 +52,25 @@ export const Check = z
     if (needsTarget && !c.target) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${c.kind} requires a target` });
     }
-    if (c.kind === "url_matches" && !c.pattern) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "url_matches requires a pattern" });
+    if (c.kind === "url_matches") {
+      if (!c.pattern) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "url_matches requires a pattern" });
+      } else {
+        // A pattern that cannot compile is caught here rather than at the step
+        // that runs it, so a malformed artifact is rejected before a browser is
+        // ever launched. `{input}` placeholders survive compilation as literals,
+        // so this validates the regex without needing the run's parameters.
+        try {
+          new RegExp(c.pattern);
+        } catch (e) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `url_matches pattern is not a valid regular expression: ${
+              e instanceof Error ? e.message : "unknown"
+            }`,
+          });
+        }
+      }
     }
     if ((c.kind === "text_equals" || c.kind === "text_contains") && !c.value) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${c.kind} requires a value` });

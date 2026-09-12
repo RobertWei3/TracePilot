@@ -1,7 +1,18 @@
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 
-export const DB_PATH = process.env.DEMOBANK_DB ?? path.resolve("demobank.sqlite");
+/**
+ * Resolved per call, not at import.
+ *
+ * A module-level constant freezes whichever value the environment happened to
+ * hold when this module was first loaded. That is invisible in normal use --
+ * one process, one database -- and wrong the moment two instances of the app
+ * exist in one process, which is exactly what a test suite does: every app
+ * after the first would quietly open the first one's file.
+ */
+export function dbPath(): string {
+  return process.env.DEMOBANK_DB ?? path.resolve("demobank.sqlite");
+}
 
 export type Member = {
   member_id: string;
@@ -28,7 +39,7 @@ const SEED: Omit<Member, "updated_at">[] = [
 ];
 
 export function open(): DatabaseSync {
-  const db = new DatabaseSync(DB_PATH);
+  const db = new DatabaseSync(dbPath());
   db.exec(`
     CREATE TABLE IF NOT EXISTS members (
       member_id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, dob TEXT, plan TEXT,

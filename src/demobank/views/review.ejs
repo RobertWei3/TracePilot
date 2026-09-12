@@ -2,7 +2,7 @@
   <h2>Review mailing address change</h2>
   <div class="kv">
     <div>Member</div><div><%= m.member_id %> — <%= m.first_name %> <%= m.last_name %></div>
-    <div>Current address</div><div><%= m.line1 %><%= m.line2 ? ", " + m.line2 : "" %>, <%= m.city %>, <%= m.state %> <%= m.zip %></div>
+    <div>Current address</div><div data-sensitive><%= m.line1 %><%= m.line2 ? ", " + m.line2 : "" %>, <%= m.city %>, <%= m.state %> <%= m.zip %></div>
     <div>New address</div><div><%= v.line1 %><%= v.line2 ? ", " + v.line2 : "" %>, <%= v.city %>, <%= v.state %> <%= v.zip %></div>
   </div>
   <form method="post" action="/members/<%= m.member_id %>/submit"<% if (extraDialog) { %> onsubmit="return confirm('This member has a pending service request. Continue anyway?')"<% } %>>

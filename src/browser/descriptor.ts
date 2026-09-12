@@ -18,6 +18,21 @@ export function describe(
   el: ObservedElement,
   opts: { nth?: number; anchorInput?: string } = {},
 ): Descriptor {
+  // A redacted element's name and caption are placeholders, not page text.
+  // Building the usual ladder from them would freeze "<other member>" into the
+  // artifact as a locator, which matches nothing and would survive review
+  // looking plausible. Such an element is addressed structurally instead: the
+  // path carries position and no text, so the control stays actionable while
+  // staying unreadable.
+  if (el.redacted) {
+    return {
+      role: el.role,
+      tagName: el.tagName,
+      ...(opts.nth !== undefined ? { nth: opts.nth } : {}),
+      candidates: [{ rank: 1, strategy: "structural", expr: el.locatorKey }],
+    };
+  }
+
   const candidates: LocatorCandidate[] = [];
   let rank = 1;
   if (el.name) candidates.push({ rank: rank++, strategy: "role+name", expr: `${el.role}|${el.name}` });
@@ -123,7 +138,10 @@ function build(page: Page, d: Descriptor, c: LocatorCandidate, inputs: Record<st
         .last()
         .locator(d.tagName);
     case "structural":
-      return root.locator(d.tagName);
+      // A path is absolute from the document; a bare tag name is scoped as
+      // before. Paths come from redacted elements, which have no container
+      // heading to scope by anyway.
+      return c.expr.includes(">") ? page.locator(c.expr) : root.locator(d.tagName);
   }
 }
 

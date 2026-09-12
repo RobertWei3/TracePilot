@@ -288,6 +288,28 @@ export function build(): FastifyInstance {
     return m ? reply.send(m) : reply.code(404).send({ error: "not found" });
   });
 
+  /**
+   * Sets record fields directly, so a test can plant a distinctive canary value
+   * and then assert it appears nowhere in a model payload. Natural seed values
+   * make poor canaries: "Ashford" is both a stored city and part of the bank's
+   * own name, so a scan for it would pass or fail for the wrong reason.
+   */
+  app.post("/_admin/member/:id", async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const existing = db.getMember(conn, id);
+    if (!existing) return reply.code(404).send({ error: "not found" });
+    const body = req.body as Record<string, string>;
+    const field = (k: keyof typeof existing) => String(body[k] ?? existing[k] ?? "");
+    db.updateAddress(conn, id, {
+      line1: field("line1"),
+      line2: field("line2"),
+      city: field("city"),
+      state: field("state"),
+      zip: field("zip"),
+    });
+    return reply.send(db.getMember(conn, id));
+  });
+
   app.addHook("onClose", async () => conn.close());
   return app;
 }
