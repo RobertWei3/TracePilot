@@ -177,6 +177,30 @@ export type RawAction = z.infer<typeof RawAction>;
 
 export type Rejection = { reason: string };
 
+export type ValidationContext = {
+  observation: Observation | null;
+  inputNames: string[];
+  outputNames: string[];
+  /**
+   * Inputs too short to be tagged in observations (MIN_TAGGED_VALUE_LENGTH),
+   * by name. The model sees these in clear, so it can copy one into an
+   * assertion as a literal -- which pins the capability to this run's subject.
+   */
+  untaggedInputs?: Record<string, string>;
+};
+
+/**
+ * Names of untagged inputs whose value appears as a whole word in the literal
+ * part of an assertion. Whole-word and case-sensitive, so "MA" is caught in
+ * "Brookline, MA 02445" but not in "MAIN" or "Manage".
+ */
+function copiedInputs(literal: string, untagged: Record<string, string>): string[] {
+  const words = new Set(literal.split(/[^A-Za-z0-9]+/));
+  return Object.entries(untagged)
+    .filter(([, value]) => value && words.has(value))
+    .map(([name]) => name);
+}
+
 /**
  * `{name}` placeholders in a pattern or template that name no declared input.
  * Both are expanded against the run's parameters at replay time, where an
@@ -217,7 +241,7 @@ function checkTargetId(targetId: string, observation: Observation | null): Rejec
  */
 function validateRecognizer(
   raw: RawAction,
-  ctx: { observation: Observation | null; inputNames: string[]; outputNames: string[] },
+  ctx: ValidationContext,
   what: string,
 ): Rejection | null {
   const { observation } = ctx;
@@ -277,6 +301,17 @@ function validateRecognizer(
         };
       }
     }
+    // Only the names go in the reason: the value is the subject's data, and
+    // the reason is recorded.
+    const literal = raw.assertTemplate?.replace(/\{[^}]+\}/g, " ") ?? raw.assertConst ?? "";
+    const copied = copiedInputs(literal, ctx.untaggedInputs ?? {});
+    if (copied.length) {
+      return {
+        reason: `the ${raw.assertTemplate ? "template" : "constant"} contains the value of ${copied
+          .map((c) => `{${c}}`)
+          .join(", ")} as literal text, which would only hold for this run's inputs. Reference it by name in assertTemplate instead, e.g. '{address.city}, {address.state} {address.zip}'.`,
+      };
+    }
   }
 
   return null;
@@ -289,11 +324,7 @@ function validateRecognizer(
  */
 export function validateAction(
   raw: RawAction,
-  ctx: {
-    observation: Observation | null;
-    inputNames: string[];
-    outputNames: string[];
-  },
+  ctx: ValidationContext,
 ): Rejection | null {
   const needsTarget: ActionName[] = ["click", "fill", "press", "extract"];
   const { observation } = ctx;

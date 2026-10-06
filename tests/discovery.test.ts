@@ -109,6 +109,27 @@ test("a template composing no input at all is a constant in disguise", () => {
   );
 });
 
+test("a short input copied into an assertion as a literal is refused, by name", () => {
+  // A state code is too short to tag, so the model reads "MA" in clear and
+  // tends to write it into the check -- which then fails for every other member.
+  const withState = (partial: Record<string, unknown>) =>
+    validateAction(RawAction.parse({ reason: "because", action: "assert", assertKind: "text_contains", ...partial }), {
+      observation: obs(),
+      inputNames,
+      outputNames,
+      untaggedInputs: { "address.state": "MA" },
+    });
+
+  const template = withState({ assertTemplate: "{address.city}, MA" })!.reason;
+  assert.match(template, /\{address\.state\}/);
+  assert.doesNotMatch(template, /\bMA\b/, "the reason is recorded, so it must not carry the value");
+  assert.match(withState({ assertConst: "Brookline, MA 02445" })!.reason, /\{address\.state\}/);
+
+  // Whole words only, and case-sensitive: the application's own text survives.
+  assert.equal(withState({ assertTemplate: "{address.city}, {address.state}" }), null);
+  assert.equal(withState({ assertConst: "MAIN OFFICE -- Manage mailing address" }), null);
+});
+
 test("an element assertion is scoped to the current observation like any other target", () => {
   assert.match(
     check({ action: "assert", assertKind: "element_exists", targetId: "obs9:el-1" })!.reason,

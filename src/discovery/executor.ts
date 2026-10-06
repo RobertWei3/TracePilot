@@ -19,6 +19,7 @@ import { SafetyViolation, checkAction, classifyEffect, redact } from "../safety/
 import {
   describe as describeEl,
   fingerprint,
+  MIN_TAGGED_VALUE_LENGTH,
   summarize,
   tagInputs,
   type ObservedElement,
@@ -144,6 +145,13 @@ export class DiscoveryExecutor {
     return Object.keys(this.o.ctx.inputs);
   }
 
+  /** See ValidationContext.untaggedInputs. */
+  private get untaggedInputs(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(this.o.ctx.inputs).filter(([, v]) => v && v.length < MIN_TAGGED_VALUE_LENGTH),
+    );
+  }
+
   private get outputNames(): string[] {
     return Object.keys(this.o.task.outputs);
   }
@@ -255,6 +263,7 @@ export class DiscoveryExecutor {
       observation: this.obs,
       inputNames: this.inputNames,
       outputNames: this.outputNames,
+      untaggedInputs: this.untaggedInputs,
     });
     if (rejection) return this.refuse(rejection.reason, this.describeProposal(raw));
 
@@ -1023,6 +1032,7 @@ export class DiscoveryExecutor {
         observation: this.obs,
         inputNames: this.inputNames,
         outputNames: this.outputNames,
+        untaggedInputs: this.untaggedInputs,
       });
       if (again) {
         this.note = `the operator asked to retry, but that action is no longer valid: ${again.reason}`;
