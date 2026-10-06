@@ -76,7 +76,8 @@ export function actTool(allowed: readonly ActionName[]) {
       },
       targetId: {
         ...nullableString,
-        description: "Element id from the CURRENT observation, e.g. obs3:el-12. Ids from earlier observations are invalid.",
+        description:
+          "Element id from the CURRENT observation, e.g. obs3:el-12. Ids from earlier observations are invalid. Optional for text_contains/text_equals asserts: null checks the whole visible page.",
       },
       url: { ...nullableString, description: "Path to navigate to, e.g. /members. navigate only." },
       inputName: {
@@ -138,26 +139,38 @@ export function actTool(allowed: readonly ActionName[]) {
   } as const;
 }
 
+/**
+ * Some models (DeepSeek, observed) fill an unused nullable field with the
+ * string "null" rather than null. Read literally it is a reference to an input
+ * or element named "null", refused as unknown -- one wasted turn per field.
+ * No input, element or output in this grammar can legitimately be named that.
+ */
+const optionalString = z
+  .preprocess((v) => (v === "null" ? null : v), z.string().nullable())
+  .default(null);
+
 export const RawAction = z
   .object({
     action: z.enum(ACTION_NAMES),
     reason: z.string().min(1).max(400),
-    targetId: z.string().nullable().default(null),
-    url: z.string().nullable().default(null),
-    inputName: z.string().nullable().default(null),
-    anchorInput: z.string().nullable().default(null),
-    regionId: z.string().nullable().default(null),
+    targetId: optionalString,
+    url: optionalString,
+    inputName: optionalString,
+    anchorInput: optionalString,
+    regionId: optionalString,
     nextBatch: z.boolean().nullable().default(null),
     assertKind: z
-      .enum(["url_matches", "element_exists", "element_absent", "text_equals", "text_contains"])
-      .nullable()
+      .preprocess(
+        (v) => (v === "null" ? null : v),
+        z.enum(["url_matches", "element_exists", "element_absent", "text_equals", "text_contains"]).nullable(),
+      )
       .default(null),
-    assertPattern: z.string().nullable().default(null),
-    assertInput: z.string().nullable().default(null),
-    assertTemplate: z.string().nullable().default(null),
-    assertConst: z.string().nullable().default(null),
-    outputName: z.string().nullable().default(null),
-    outcomeCode: z.string().nullable().default(null),
+    assertPattern: optionalString,
+    assertInput: optionalString,
+    assertTemplate: optionalString,
+    assertConst: optionalString,
+    outputName: optionalString,
+    outcomeCode: optionalString,
   })
   .strip();
 export type RawAction = z.infer<typeof RawAction>;

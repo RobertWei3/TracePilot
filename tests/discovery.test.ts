@@ -63,6 +63,15 @@ test("navigate is confined to a path on the application under test", () => {
   assert.equal(check({ action: "navigate", url: "/members/M-1002" }), null);
 });
 
+test('the string "null" in an unused field reads as null, not as a name', () => {
+  // DeepSeek sends this for fields it means to leave empty; read literally it
+  // was refused as an unknown anchorInput, one wasted turn per occurrence.
+  const raw = RawAction.parse({ action: "navigate", reason: "go", url: "/members", anchorInput: "null", assertKind: "null" });
+  assert.equal(raw.anchorInput, null);
+  assert.equal(raw.assertKind, null);
+  assert.equal(check({ action: "navigate", url: "/members", anchorInput: "null" }), null);
+});
+
 test("an assert pattern that cannot compile is refused at authoring time", () => {
   const bad = check({ action: "assert", assertKind: "url_matches", assertPattern: "/members/(" });
   assert.match(bad!.reason, /not a valid regular expression/);

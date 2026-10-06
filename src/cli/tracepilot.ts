@@ -26,6 +26,8 @@ function usage(): never {
       "  --policy  <file>   default policy.json",
       "  --base    <url>    application origin, default http://localhost:4000",
       "  --headed           show the browser (default; --headless to hide it)",
+      "  --slow    <ms>     pause before each browser operation, to watch it work",
+      "  --quiet            do not print each step as it happens",
       "  --no-handoff       never prompt: escalations end the run, for CI",
       "  --approved-by <who>  authorise the write in advance, for unattended runs",
     ].join("\n"),
@@ -77,11 +79,13 @@ async function discover(argv: string[]): Promise<number> {
   const surface = await Surface.launch({
     policy: { ...policy, allowedOrigins: [new URL(baseUrl).origin] },
     headless: argv.includes("--headless"),
+    slowMo: Number(flag(argv, "--slow") ?? 0) || undefined,
     inputs,
     secrets,
   });
 
   const store = new RunStore(surface.newRunId("discovery"));
+  if (!argv.includes("--quiet")) store.onEvent = printEvent;
   const budgets = new BudgetLedger(policy.budgets);
   const control = new ControlLedger(store);
   const operator = new OperatorConsole(surface, store, control, budgets, inputs, interactive);
@@ -124,6 +128,19 @@ async function discover(argv: string[]): Promise<number> {
   } finally {
     await surface.close();
   }
+}
+
+/**
+ * One line per event, as it happens. It prints the sanitized record the store
+ * just wrote, so watching a run shows nothing the evidence directory does not.
+ */
+function printEvent(e: Record<string, unknown>): void {
+  const time = String(e.at ?? "").slice(11, 19);
+  const type = String(e.type ?? "");
+  const mark = type === "action_rejected" ? "✗" : type === "step_recorded" ? "✓" : "·";
+  const what = [e.action, e.reason].filter(Boolean).join(" -- ");
+  const where = typeof e.url === "string" ? `  @ ${decodeURIComponent(new URL(e.url).pathname)}` : "";
+  console.log(`${time} ${mark} ${type.padEnd(22)} ${what}${where}`);
 }
 
 async function main(): Promise<void> {

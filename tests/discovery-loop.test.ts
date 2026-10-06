@@ -231,6 +231,39 @@ test("a recognizer that does not hold is refused rather than believed", async (t
   assert.match(events, /that recognizer does not hold/);
 });
 
+test("a text check on the wrong element says where the text actually is", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // The heading is the nearest named thing to the new address, so it is the
+  // target a model reaches for -- and a refusal that only says "does not hold"
+  // invited the same proposal again until the run hit DEAD_END.
+  const model = new ScriptedModel([
+    ...toReview,
+    (tx) => ({
+      action: "assert",
+      assertKind: "text_contains",
+      assertInput: "address.line1",
+      targetId: pick(tx, (r) => r.role === "heading", "the review heading"),
+    }),
+    () => ({ action: "assert", assertKind: "text_contains", assertInput: "address.line1" }),
+    () => ({ action: "give_up", reason: "done checking" }),
+  ]);
+
+  const { store } = await runDiscovery({ app, model });
+
+  const events = readFileSync(store.logPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l) as { type: string; action?: string; reason?: string });
+  const refused = events.find((e) => e.type === "action_rejected");
+  assert.match(refused?.reason ?? "", /IS on this page.*omit targetId/);
+  assert.ok(
+    events.some((e) => e.type === "step_recorded" && e.action === "assert"),
+    "the page-wide check should have been accepted",
+  );
+});
+
 test("a consequential control cannot be clicked without a recorded approval", async (t) => {
   const app = await startApp();
   t.after(() => app.stop());

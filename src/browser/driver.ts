@@ -14,6 +14,8 @@ import { resolve, summarize, type Attempt } from "./descriptor.js";
 export type SurfaceOptions = {
   policy: Policy;
   headless?: boolean;
+  /** Milliseconds Playwright waits before each browser operation, so a person can follow along. */
+  slowMo?: number;
   profileDir?: string;
   /** Values resolved in memory only. Never sent to a model, never persisted. */
   inputs?: Record<string, string>;
@@ -54,6 +56,7 @@ export class Surface {
     const profileDir = opts.profileDir ?? path.resolve(".pw-profile");
     const context = await chromium.launchPersistentContext(profileDir, {
       headless: opts.headless ?? false,
+      slowMo: opts.slowMo,
       viewport: { width: policy.observation.screenshotWidth, height: policy.observation.screenshotHeight },
       args: ["--disable-blink-features=AutomationControlled"],
     });
@@ -227,7 +230,13 @@ export class Surface {
   async textOf(d: Descriptor): Promise<string | null> {
     const res = await this.locate(d);
     if (!res.ok) return null;
-    return ((await res.locator.textContent()) ?? "").replace(/\s+/g, " ").trim();
+    // A form control's text is its value, not its (always empty) textContent;
+    // otherwise no assertion on a stored field could ever hold.
+    const isControl = await res.locator.evaluate((el) =>
+      ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName),
+    );
+    const raw = isControl ? await res.locator.inputValue() : await res.locator.textContent();
+    return (raw ?? "").replace(/\s+/g, " ").trim();
   }
 
   async visibleText(): Promise<string> {

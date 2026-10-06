@@ -15,13 +15,18 @@ import { Surface } from "../src/browser/index.js";
 import { BudgetLedger, RunStore } from "../src/observability/index.js";
 import { ControlLedger, OperatorConsole } from "../src/handoff/index.js";
 import { flatten, type ApprovalMode } from "../src/workflow/index.js";
-import { DiscoveryExecutor, allowedActions, modelFromEnv } from "../src/discovery/index.js";
+import {
+  DiscoveryExecutor,
+  allowedActions,
+  configuredProvider,
+  modelFromEnv,
+} from "../src/discovery/index.js";
 
-const live = Boolean(process.env.ANTHROPIC_API_KEY);
+const live = configuredProvider() !== null;
 
 test(
   "a real model completes the workflow from the goal alone",
-  { skip: live ? false : "ANTHROPIC_API_KEY is not set", timeout: 300_000 },
+  { skip: live ? false : "no DEEPSEEK_API_KEY or ANTHROPIC_API_KEY", timeout: 300_000 },
   async (t) => {
     const app = await startApp();
     t.after(() => app.stop());
@@ -42,7 +47,9 @@ test(
       inputs,
       secrets,
     });
-    const store = new RunStore(surface.newRunId("live"), path.join(app.profileDir, "runs"));
+    // Kept in runs/ rather than the app's temp dir: a live run that fails is
+    // only diagnosable from its record, and the model's choices do not repeat.
+    const store = new RunStore(surface.newRunId("live"));
     const budgets = new BudgetLedger(policy.budgets);
     const control = new ControlLedger(store);
     const operator = new OperatorConsole(surface, store, control, budgets, inputs, false);
@@ -69,7 +76,7 @@ test(
       }).run();
 
       console.log(
-        `live run: ${result.outcome} [${result.reasonCode}] in ${result.budgets.modelCalls} model calls`,
+        `live run: ${result.outcome} [${result.reasonCode}] in ${result.budgets.modelCalls} model calls -- ${store.dir}`,
       );
       assert.equal(result.outcome, "success", JSON.stringify(result.failure ?? {}, null, 2));
       assert.match(result.outputs!.confirmation_id!, /^CONF-[A-Z0-9]{8}$/);

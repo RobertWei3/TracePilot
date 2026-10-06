@@ -106,6 +106,14 @@ test("controls whose caption is a bare div still resolve", async () => {
   assert.equal(unnamed.length, 3);
 });
 
+test("a form control's text is its value", async () => {
+  // textContent of an <input> is always empty, so an assertion that a field
+  // holds the stored value could never pass if this read the wrong property.
+  await surface.navigate(`${app.baseUrl}/members/M-1002/edit`);
+  const box = (await surface.observe()).elements.find((e) => e.name === "Address line 1")!;
+  assert.equal(await surface.textOf(describeEl(box)), "418 Larkspur Way");
+});
+
 test("a descriptor captured for one member resolves for another", async () => {
   // The container heading was tagged as "<input:member_id>" in-page, so the
   // same descriptor follows whichever member the run is parameterized with.
