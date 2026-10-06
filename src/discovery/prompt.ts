@@ -66,6 +66,8 @@ export function systemPrompt(
     "   omit it to check the whole visible page. A target's text is only what is inside it, so",
     "   a heading does not contain the rows beneath it. Never copy an input's value into an",
     "   assertion as literal text, even a short one you can read on the page; reference it by name.",
+    "   Likewise never spell out an output's value (it changes every run); assert its fixed part,",
+    "   such as the prefix the application always shows.",
     "5. Before any action that writes a durable change -- submitting a form that commits data --",
     "   call `request_approval` first. A person authorises it. Never submit without that.",
     "6. Verify rather than assume: after a change is accepted, re-read the record to confirm the",

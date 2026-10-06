@@ -187,7 +187,34 @@ export type ValidationContext = {
    * assertion as a literal -- which pins the capability to this run's subject.
    */
   untaggedInputs?: Record<string, string>;
+  /** Declared output patterns, by name, so a copy is caught even before extraction. */
+  outputPatterns?: Record<string, string>;
+  /** Outputs bound so far in this run, by name. */
+  boundOutputs?: Record<string, string>;
 };
+
+/**
+ * Names of outputs whose value appears in the literal part of an assertion.
+ * An output is what the application issued this run -- a confirmation id is
+ * different every time -- so a check that spells it out cannot hold on replay.
+ */
+function copiedOutputs(literal: string, ctx: ValidationContext): string[] {
+  const names = new Set<string>();
+  for (const [name, value] of Object.entries(ctx.boundOutputs ?? {})) {
+    if (value && literal.includes(value)) names.add(name);
+  }
+  for (const [name, pattern] of Object.entries(ctx.outputPatterns ?? {})) {
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern.replace(/^\^/, "").replace(/\$$/, ""));
+    } catch {
+      continue;
+    }
+    // A pattern that matches nothing at all would refuse every literal.
+    if (!re.test("") && re.test(literal)) names.add(name);
+  }
+  return [...names];
+}
 
 /**
  * Names of untagged inputs whose value appears as a whole word in the literal
@@ -310,6 +337,14 @@ function validateRecognizer(
         reason: `the ${raw.assertTemplate ? "template" : "constant"} contains the value of ${copied
           .map((c) => `{${c}}`)
           .join(", ")} as literal text, which would only hold for this run's inputs. Reference it by name in assertTemplate instead, e.g. '{address.city}, {address.state} {address.zip}'.`,
+      };
+    }
+    const issued = copiedOutputs(literal, ctx);
+    if (issued.length) {
+      return {
+        reason: `the ${raw.assertTemplate ? "template" : "constant"} contains the value of output ${issued
+          .map((o) => `"${o}"`)
+          .join(", ")}, which the application issues afresh on every run. Assert only its fixed part instead, such as a prefix the application always shows (e.g. assertConst 'CONF-').`,
       };
     }
   }

@@ -152,6 +152,15 @@ export class DiscoveryExecutor {
     );
   }
 
+  private get outputPatterns(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(this.o.task.outputs).flatMap(([name, spec]) => {
+        const pattern = (spec as { pattern?: string }).pattern;
+        return pattern ? [[name, pattern]] : [];
+      }),
+    );
+  }
+
   private get outputNames(): string[] {
     return Object.keys(this.o.task.outputs);
   }
@@ -264,6 +273,8 @@ export class DiscoveryExecutor {
       inputNames: this.inputNames,
       outputNames: this.outputNames,
       untaggedInputs: this.untaggedInputs,
+      outputPatterns: this.outputPatterns,
+      boundOutputs: this.outputs,
     });
     if (rejection) return this.refuse(rejection.reason, this.describeProposal(raw));
 
@@ -1033,6 +1044,8 @@ export class DiscoveryExecutor {
         inputNames: this.inputNames,
         outputNames: this.outputNames,
         untaggedInputs: this.untaggedInputs,
+        outputPatterns: this.outputPatterns,
+        boundOutputs: this.outputs,
       });
       if (again) {
         this.note = `the operator asked to retry, but that action is no longer valid: ${again.reason}`;

@@ -130,6 +130,28 @@ test("a short input copied into an assertion as a literal is refused, by name", 
   assert.equal(withState({ assertConst: "MAIN OFFICE -- Manage mailing address" }), null);
 });
 
+test("an issued output copied into an assertion is refused, before and after extraction", () => {
+  const withOutputs = (partial: Record<string, unknown>, boundOutputs: Record<string, string> = {}) =>
+    validateAction(RawAction.parse({ reason: "because", action: "assert", assertKind: "text_contains", ...partial }), {
+      observation: obs(),
+      inputNames,
+      outputNames,
+      outputPatterns: { confirmation_id: "^CONF-[A-Z0-9]{8}$" },
+      boundOutputs,
+    });
+
+  // Caught by the declared pattern before anything is bound...
+  assert.match(withOutputs({ assertConst: "Confirmation ID CONF-X393YMTX" })!.reason, /"confirmation_id"/);
+  // ...and by the bound value, which need not fit the pattern's shape.
+  assert.match(
+    withOutputs({ assertConst: "Ref 1234-5678" }, { confirmation_id: "1234-5678" })!.reason,
+    /"confirmation_id"/,
+  );
+  // The fixed part is what a replayable check asserts, as the oracle does.
+  assert.equal(withOutputs({ assertConst: "CONF-" }), null);
+  assert.equal(withOutputs({ assertConst: "Mailing address updated." }), null);
+});
+
 test("an element assertion is scoped to the current observation like any other target", () => {
   assert.match(
     check({ action: "assert", assertKind: "element_exists", targetId: "obs9:el-1" })!.reason,
