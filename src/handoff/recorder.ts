@@ -26,20 +26,19 @@ export type RecordedAction = {
  *
  * The identity extraction here is a compact restatement of the observation
  * builder's, because a listener cannot call back into Node synchronously and
- * the page may unload immediately afterwards. `tests/handoff.test.ts` asserts
- * that a recorded descriptor resolves to the same element the observer would
- * describe, so drift between the two shows up as a test failure rather than a
- * wrong artifact.
+ * the page may unload immediately afterwards. `tests/handoff.test.ts` compiles
+ * a run containing a takeover and replays it for another member, so drift
+ * between the two descriptions shows up as a test failure rather than a wrong
+ * artifact.
  */
 function installRecorder(cfg: {
   inputTags: { name: string; value: string }[];
   minTagLength: number;
 }): void {
   type Rec = Record<string, unknown>;
-  const w = window as unknown as { __tpRecorded?: Rec[]; __tpInstalled?: boolean };
+  const w = window as unknown as { __tpRecord?: (r: Rec) => void; __tpInstalled?: boolean };
   if (w.__tpInstalled) return;
   w.__tpInstalled = true;
-  w.__tpRecorded = [];
   let seq = 0;
 
   const tag = (s: string): string => {
@@ -118,7 +117,10 @@ function installRecorder(cfg: {
     if (typed) {
       for (const t of cfg.inputTags) if (t.value && t.value === typed) matchedInput = t.name;
     }
-    w.__tpRecorded!.push({
+    // Sent out of the page the moment it happens. A buffer kept in the page
+    // dies with the document, so a click that navigates would take every
+    // earlier action on that page down with it.
+    w.__tpRecord?.({
       seq: ++seq,
       eventType,
       matchedInput,
@@ -170,8 +172,19 @@ function installRecorder(cfg: {
   );
 }
 
+/**
+ * Where a browser context's recorded actions go. A binding can be exposed
+ * only once per context, but a run can hand over control many times, so the
+ * binding is permanent and this routes it to whichever recorder is armed --
+ * or to nothing. The in-page listeners stay installed once a takeover has
+ * happened; this is what keeps the agent's own clicks, after control returns,
+ * from being attributed to the person.
+ */
+const sinks = new WeakMap<object, ((action: RecordedAction) => void) | null>();
+
 export class HumanRecorder {
   private collected: RecordedAction[] = [];
+  private seq = 0;
 
   constructor(
     private readonly surface: Surface,
@@ -180,24 +193,33 @@ export class HumanRecorder {
 
   /** Arms the recorder on the current page and every page that follows. */
   async start(): Promise<void> {
+    const context = this.surface.context;
+    if (!sinks.has(context)) {
+      await context.exposeBinding("__tpRecord", (_source, action: RecordedAction) => {
+        sinks.get(context)?.(action);
+      });
+    }
+    // Sequence numbers restart in every document, so they are reassigned here
+    // in arrival order; dedupe compares them across pages.
+    sinks.set(context, (action) => this.collected.push({ ...action, seq: ++this.seq }));
+
     const cfg = {
       inputTags: Object.entries(this.inputs).map(([name, value]) => ({ name, value })),
       minTagLength: MIN_TAGGED_VALUE_LENGTH,
     };
-    await this.surface.context.addInitScript(installRecorder, cfg);
+    await context.addInitScript(installRecorder, cfg);
     await this.surface.page.evaluate(installRecorder, cfg);
   }
 
-  /** Pulls whatever the current document has recorded so far. */
+  /**
+   * Disarms the recorder and returns everything the person did. Anything
+   * recorded after this -- the agent acting again -- goes nowhere.
+   */
   async drain(): Promise<RecordedAction[]> {
-    const batch = (await this.surface.page.evaluate(() => {
-      const w = window as unknown as { __tpRecorded?: unknown[] };
-      const out = w.__tpRecorded ?? [];
-      w.__tpRecorded = [];
-      return out;
-    })) as RecordedAction[];
-    this.collected.push(...batch);
-    return batch;
+    // A change event fired by the last blur may still be in flight.
+    await this.surface.page.evaluate(() => new Promise((r) => setTimeout(r, 50))).catch(() => {});
+    sinks.set(this.surface.context, null);
+    return this.collected;
   }
 
   all(): RecordedAction[] {

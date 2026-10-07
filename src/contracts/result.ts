@@ -22,6 +22,8 @@ export const ReasonCode = z.enum([
   "ROUTE_NOT_ALLOWLISTED",
   "ACTION_NOT_ALLOWLISTED",
   "APPROVAL_DECLINED",
+  /** A consequential step was reached with no approval recorded in the run. */
+  "APPROVAL_MISSING",
   "AWAITING_HUMAN",
   "OPERATOR_ABORTED",
   "STEP_BUDGET_EXHAUSTED",

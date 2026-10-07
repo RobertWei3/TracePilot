@@ -198,6 +198,11 @@ export class Surface {
           break;
         case "fill":
           await res.locator.fill(literal ?? "", { timeout: this.policy.budgets.stepTimeoutMs });
+          // Leave the field, as a person tabbing out would, so its change
+          // event fires now. Left pending, it fires on whatever blurs the field
+          // next -- which, after a hand-over, is the person's first click, and
+          // the agent's typing would be recorded as theirs.
+          await res.locator.blur({ timeout: this.policy.budgets.stepTimeoutMs });
           break;
         case "select":
           await res.locator.selectOption(literal ?? "", { timeout: this.policy.budgets.stepTimeoutMs });

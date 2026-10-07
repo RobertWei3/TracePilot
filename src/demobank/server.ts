@@ -89,7 +89,7 @@ export function build(): FastifyInstance {
   app.post("/login", async (req, reply) => {
     const body = req.body as Record<string, string>;
     const ok =
-      body.username === (process.env.DEMOBANK_USER ?? "operator") &&
+      body.username === (process.env.DEMOBANK_USER ?? "teller-7q2") &&
       body.password === (process.env.DEMOBANK_PASS ?? "demo-pass-4417");
     if (!ok) {
       return reply

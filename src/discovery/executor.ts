@@ -831,6 +831,8 @@ export class DiscoveryExecutor {
     resolved?: { rank: number; strategy: string };
     authoredBy?: "agent" | "human";
     unresolved?: boolean;
+    /** Where the step left the page, when that is not where the page is now. */
+    url?: string;
   }): void {
     this.seq += 1;
     const id = this.stepId(this.seq);
@@ -846,7 +848,7 @@ export class DiscoveryExecutor {
         seq: this.seq,
         action: step.action,
         reason: redact(step.reason).slice(0, 200),
-        url: this.taggedUrl(),
+        url: step.url !== undefined ? tagInputs(step.url, this.o.ctx.inputs) : this.taggedUrl(),
         ...(step.target ? { target: step.target } : {}),
         ...(step.value ? { value: step.value } : {}),
         effect: step.effect,
@@ -1102,9 +1104,11 @@ export class DiscoveryExecutor {
     }
   }
 
-  private absorbHumanSteps(recorded: { eventType: string; element: ObservedElement; matchedInput: string | null }[]): void {
-    for (const action of recorded) {
-      if (action.eventType === "submit") continue;
+  private absorbHumanSteps(
+    recorded: { eventType: string; element: ObservedElement; matchedInput: string | null; url: string }[],
+  ): void {
+    const kept = recorded.filter((a) => a.eventType !== "submit");
+    for (const [i, action] of kept.entries()) {
       const descriptor = HumanRecorder.toDescriptor(action as never);
       const resolvedAction: TraceStep["action"] =
         action.eventType === "fill" || action.eventType === "select" ? "fill" : "click";
@@ -1119,6 +1123,10 @@ export class DiscoveryExecutor {
         effect: "reversible",
         authoredBy: "human",
         unresolved: resolvedAction === "fill" && !action.matchedInput,
+        // A trace step records where it left the page. These are absorbed only
+        // after the person hands back, when the page is wherever they ended,
+        // so each one's is where the next action happened instead.
+        ...(kept[i + 1] ? { url: kept[i + 1]!.url } : {}),
       });
     }
   }

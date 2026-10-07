@@ -224,12 +224,16 @@ automation module may import DemoBank.
 ## Testing
 
 ```bash
-npm test          # 110 tests
+npm test          # 120 tests
 npm run typecheck
 ```
 
 The suite runs against a real browser and the real application — scripted-model
-tests cover one case per stop condition and one per refusal. A live-model smoke
+tests cover one case per stop condition and one per refusal. Handoff tests stand
+a scripted person at the console who drives the same live browser with real
+input, then answer the intervention; a run containing a takeover is compiled and
+replayed for another member, so what the person did is proven replayable, not
+just recorded. A live-model smoke
 test covers the prompt itself and skips without an API key, so a model's
 judgement never gates CI.
 
