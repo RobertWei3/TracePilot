@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { startApp, OPERATOR_SECRETS } from "./helpers/app.js";
 import { ScriptedModel, FailingModel, pick } from "./helpers/scripted.js";
-import { PRE_APPROVED, runDiscovery, task, throughSubmit, toReview } from "./helpers/discovery.js";
+import { PRE_APPROVED, readBack, runDiscovery, task, throughSubmit, toReview } from "./helpers/discovery.js";
 import { compile } from "../src/compiler/index.js";
 import { DiscoveryTrace } from "../src/contracts/index.js";
 import { replay } from "../src/replay/index.js";
@@ -78,6 +78,126 @@ test("a fill records a value reference, never the value", async (t) => {
     assert.ok(!events.includes(secret), `events.jsonl leaked ${secret}`);
   }
   assert.match(raw, /"input":\s*"address\.city"/);
+});
+
+test("a write is not finished until it is read back from the record", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // throughSubmit asserts the confirmation banner -- the application saying it
+  // worked -- which is not the same as the record showing it.
+  const model = new ScriptedModel([
+    ...toReview,
+    ...throughSubmit,
+    () => ({ action: "done", reason: "the banner says it worked" }),
+    ...readBack,
+    () => ({ action: "done", reason: "the stored address was read back" }),
+  ]);
+  const { result, store } = await runDiscovery({ app, model });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  const refusals = readFileSync(store.logPath, "utf8");
+  assert.match(refusals, /not been read back/);
+});
+
+test("echoing an input on the page the write landed on is not a read-back", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // The confirmation page shows the member id, so this assertion holds and is
+  // derived from an input -- but the member id identifies the record; it is
+  // not what was written, and this is not the record.
+  const model = new ScriptedModel([
+    ...toReview,
+    ...throughSubmit,
+    () => ({ action: "assert", assertKind: "text_contains", assertInput: "member_id" }),
+    () => ({ action: "done", reason: "the member id is on the page" }),
+    () => ({ action: "give_up", reason: "refused, as expected" }),
+  ]);
+  const { result, store } = await runDiscovery({ app, model });
+
+  assert.notEqual(result.outcome, "success");
+  assert.match(readFileSync(store.logPath, "utf8"), /not been read back/);
+});
+
+test("a template whose parts are all on the page, but apart, is refused with how to fix it", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // The record page shows the street and the city line in separate rows, so
+  // the review page's one-line form does not hold there. A live run retried
+  // it until DEAD_END.
+  const model = new ScriptedModel([
+    ...toReview,
+    ...throughSubmit,
+    readBack[0]!,
+    () => ({
+      action: "assert",
+      assertKind: "text_contains",
+      assertTemplate: "{address.line1}, {address.city}, {address.state} {address.zip}",
+    }),
+    () => ({ action: "give_up", reason: "stopping after the refusal" }),
+  ]);
+  const { store } = await runDiscovery({ app, model });
+
+  assert.match(readFileSync(store.logPath, "utf8"), /not arranged that way: assert them separately/);
+});
+
+test("a pre-approval authorises one write; a second one needs a person", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // A live run did exactly this: went to "verify" on the edit form, re-typed a
+  // field and submitted again, and the standing pre-approval let it through.
+  const model = new ScriptedModel([
+    ...toReview,
+    ...throughSubmit,
+    readBack[0]!,
+    (tx) => ({ action: "click", targetId: pick(tx, (r) => r.name === "Edit mailing address", "Edit link") }),
+    (tx) => ({ action: "fill", targetId: pick(tx, (r) => r.name === "Address line 1", "line1"), inputName: "address.line1" }),
+    (tx) => ({ action: "click", targetId: pick(tx, (r) => r.name === "Review changes", "Review changes") }),
+    () => ({ action: "request_approval", reason: "submitting again" }),
+    (tx) => ({ action: "click", targetId: pick(tx, (r) => r.name === "Submit change", "Submit change") }),
+    () => ({ action: "give_up", reason: "stopping" }),
+  ]);
+  const { result } = await runDiscovery({ app, model });
+
+  assert.equal((await app.confirmations()).count, 1, "the second write must not happen");
+  assert.equal(result.outcome, "aborted");
+  assert.equal(result.reasonCode, "APPROVAL_DECLINED");
+});
+
+test("an output is read once, and its URL is not a place to go back to", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // A live run read the confirmation id, went to the member record, then
+  // navigated straight back to /confirmation/<that id> to read it again --
+  // a step no replay could reproduce, so the run could not compile.
+  let confirmationUrl = "";
+  const model = new ScriptedModel([
+    ...toReview,
+    ...throughSubmit,
+    (tx) => {
+      confirmationUrl = /url: (\S+)/.exec(tx)?.[1] ?? "";
+      return { action: "extract", targetId: pick(tx, (r) => /^CONF-/.test(r.name), "the id"), outputName: "confirmation_id" };
+    },
+    ...readBack,
+    () => ({ action: "navigate", url: new URL(confirmationUrl).pathname }),
+    ...readBack.slice(1),
+    () => ({ action: "done", reason: "read back and bound" }),
+  ]);
+  const { result, store } = await runDiscovery({ app, model });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  const log = readFileSync(store.logPath, "utf8");
+  assert.match(log, /is already bound. Do not extract it again/);
+  assert.match(log, /that URL contains the value of output \\"confirmation_id\\"/);
+  // And the run compiles, because nothing in it names the issued value.
+  compile(DiscoveryTrace.parse(JSON.parse(readFileSync(path.join(store.dir, "trace.json"), "utf8"))), task, {
+    version: 1,
+    createdAt: "2026-10-06T00:00:00.000Z",
+  });
 });
 
 test("the application correctly saying no is a business outcome, not a failure", async (t) => {
@@ -332,7 +452,8 @@ test("a discovered run compiles into a capability that replays for another membe
       assertTemplate: "{address.line1}, {address.line2}, {address.city}, {address.state} {address.zip}",
     }),
     ...throughSubmit,
-    () => ({ action: "done", reason: "address updated and confirmation bound" }),
+    ...readBack,
+    () => ({ action: "done", reason: "address updated, read back and confirmation bound" }),
   ]);
   const { result: discovered, store } = await runDiscovery({ app, model });
   assert.equal(discovered.outcome, "success", JSON.stringify(discovered.failure));

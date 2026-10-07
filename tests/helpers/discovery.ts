@@ -113,3 +113,18 @@ export const throughSubmit: Move[] = [
     outputName: "confirmation_id",
   }),
 ];
+
+/**
+ * Re-reads the record after the write and asserts the stored values there.
+ * The details page shows the street and the city line in separate rows, so
+ * each is asserted on its own.
+ */
+export const readBack: Move[] = [
+  (t) => ({ action: "click", targetId: pick(t, (r) => r.name === "Back to member", "back link") }),
+  () => ({ action: "assert", assertKind: "text_contains", assertInput: "address.line1" }),
+  () => ({
+    action: "assert",
+    assertKind: "text_contains",
+    assertTemplate: "{address.city}, {address.state} {address.zip}",
+  }),
+];

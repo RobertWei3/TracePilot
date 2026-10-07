@@ -12,7 +12,7 @@ import path from "node:path";
 import type { Page } from "playwright";
 import { startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
 import { ScriptedModel, pick, type Move } from "./helpers/scripted.js";
-import { PRE_APPROVED, runDiscovery, task, throughSubmit, toReview } from "./helpers/discovery.js";
+import { PRE_APPROVED, readBack, runDiscovery, task, throughSubmit, toReview } from "./helpers/discovery.js";
 import { compile } from "../src/compiler/index.js";
 import { DiscoveryTrace, type Capability, type TraceStep } from "../src/contracts/index.js";
 import { loadCapability, replay } from "../src/replay/index.js";
@@ -70,7 +70,8 @@ test("a takeover that spans pages records every action, as references", async (t
     ...stuck,
     // Control comes back on the review page the person navigated to.
     ...throughSubmit,
-    () => ({ action: "done", reason: "address updated and confirmation bound" }),
+    ...readBack,
+    () => ({ action: "done", reason: "address updated, read back and confirmation bound" }),
   ]);
   const { result, store } = await runDiscovery({
     app,
@@ -185,7 +186,8 @@ test("the agent's last typing is not attributed to the person who clicks after i
     ...toReview.slice(5, 10),
     ...stuck,
     ...throughSubmit,
-    () => ({ action: "done", reason: "address updated and confirmation bound" }),
+    ...readBack,
+    () => ({ action: "done", reason: "address updated, read back and confirmation bound" }),
   ]);
   const { result, store } = await runDiscovery({
     app,

@@ -70,10 +70,15 @@ export function systemPrompt(
     "   such as the prefix the application always shows.",
     "5. Before any action that writes a durable change -- submitting a form that commits data --",
     "   call `request_approval` first. A person authorises it. Never submit without that.",
-    "6. Verify rather than assume: after a change is accepted, re-read the record to confirm the",
-    "   new value was actually stored, and assert it.",
+    "6. Verify rather than assume. A confirmation page says the change was accepted, not that it",
+    "   was stored: after the change is submitted, open the record that was changed and assert the",
+    "   new values there, referencing the inputs you wrote. A record page often shows values in",
+    "   separate rows -- assert each where it appears rather than as one composed string.",
+    "   Reading back changes nothing: use the record's view, not its edit form, and never submit",
+    "   again. A second write is not covered by the approval you already have.",
     "7. Call `done` only when the goal is achieved, every declared output is bound, and you have",
-    "   asserted the change persisted. Call `give_up` if you are stuck, with the reason.",
+    "   read the change back from the record (rule 6); `done` is refused until then. Call",
+    "   `give_up` if you are stuck, with the reason.",
     ...(can("business_outcome")
       ? [
           "8. If the application itself correctly refuses -- no such record, a rule that forbids the",

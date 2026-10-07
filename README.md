@@ -224,7 +224,7 @@ automation module may import DemoBank.
 ## Testing
 
 ```bash
-npm test          # 120 tests
+npm test          # 125 tests
 npm run typecheck
 ```
 
