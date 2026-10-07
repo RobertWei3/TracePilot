@@ -26,6 +26,9 @@ const PRE_APPROVED: ApprovalMode = {
   at: "2026-01-01T00:00:00.000Z",
 };
 import { DiscoveryExecutor } from "../src/discovery/index.js";
+import { compile } from "../src/compiler/index.js";
+import { DiscoveryTrace } from "../src/contracts/index.js";
+import { replay } from "../src/replay/index.js";
 import type { ModelClient } from "../src/discovery/model.js";
 
 const task = TaskContract.parse(
@@ -414,4 +417,54 @@ test("an unreachable model is not charged to the decision budget", async (t) => 
   assert.equal(result.reasonCode, "DEAD_END");
   assert.equal(result.budgets.modelCalls, 0, "no decision was made, so nothing is charged");
   assert.equal(model.calls, 1);
+});
+
+test("a discovered run compiles into a capability that replays for another member, with no model", async (t) => {
+  // The loop P4 closes: discover once on M-1002, compile, then replay on
+  // M-1007 -- whose address has no second line, so a template authored on
+  // M-1002 holds only because the compiler split it at the optional input.
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  const model = new ScriptedModel([
+    ...toReview,
+    () => ({
+      action: "assert",
+      assertKind: "text_contains",
+      assertTemplate: "{address.line1}, {address.line2}, {address.city}, {address.state} {address.zip}",
+    }),
+    ...throughSubmit,
+    () => ({ action: "done", reason: "address updated and confirmation bound" }),
+  ]);
+  const { result: discovered, store } = await runDiscovery({ app, model });
+  assert.equal(discovered.outcome, "success", JSON.stringify(discovered.failure));
+
+  const trace = DiscoveryTrace.parse(JSON.parse(readFileSync(path.join(store.dir, "trace.json"), "utf8")));
+  const { capability } = compile(trace, task, { version: 1, createdAt: "2026-10-06T00:00:00.000Z" });
+  assert.equal(capability.status, "ready");
+
+  await app.reset();
+  const replayed = await replay({
+    capability,
+    values: JSON.parse(readFileSync("values/member-1007.json", "utf8")),
+    policy: app.policy,
+    baseUrl: app.baseUrl,
+    headless: true,
+    profileDir: path.join(app.profileDir, "replay"),
+    approval: PRE_APPROVED,
+    interactive: false,
+    runRoot: path.join(app.profileDir, "runs"),
+    secrets: OPERATOR_SECRETS,
+  });
+
+  assert.equal(replayed.outcome, "success", JSON.stringify(replayed.failure));
+  assert.equal(replayed.budgets.modelCalls, 0);
+  assert.match(replayed.outputs!.confirmation_id!, /^CONF-[A-Z0-9]{8}$/);
+  assert.notEqual(replayed.outputs!.confirmation_id, discovered.outputs!.confirmation_id);
+
+  const member = (await app.member("M-1007"))!;
+  assert.equal(member.line1, "88 Sablewood Terrace");
+  assert.equal(member.city, "Petaluma");
+  const untouched = (await app.member("M-1002"))!;
+  assert.equal(untouched.updated_at, null, "the reset member the run was discovered on must stay untouched");
 });

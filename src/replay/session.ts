@@ -14,7 +14,11 @@ export type ReplayRequest = {
   /** Origin to run against; overrides the artifact's own for a local demo. */
   baseUrl?: string;
   headless?: boolean;
+  /** See SurfaceOptions.slowMo. */
+  slowMo?: number;
   profileDir?: string;
+  /** See RunStore.onEvent. */
+  onEvent?: (record: Record<string, unknown>) => void;
   approval: ApprovalMode;
   interactive: boolean;
   runRoot?: string;
@@ -54,10 +58,12 @@ export async function replay(req: ReplayRequest): Promise<ExecutionResult> {
     `replay-${new Date().toISOString().replace(/[:.]/g, "-")}`,
     req.runRoot ?? "runs",
   );
+  store.onEvent = req.onEvent;
   const budgets = new BudgetLedger(policy.budgets);
   const surface = await Surface.launch({
     policy,
     headless: req.headless ?? false,
+    slowMo: req.slowMo,
     profileDir: req.profileDir,
     inputs,
     secrets: req.secrets ?? operatorSecrets(),

@@ -1,0 +1,647 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "discovery-2026-10-06T08-13-05-750Z-ac844e",
+  "taskId": "demobank.update_mailing_address",
+  "origin": "http://localhost:4000",
+  "model": "deepseek-flash",
+  "startedAt": "2026-10-06T08:13:05.751Z",
+  "endedAt": "2026-10-06T08:14:00.631Z",
+  "outcome": "success",
+  "steps": [
+    {
+      "seq": 1,
+      "action": "fill",
+      "reason": "Enter the member ID to search for the record.",
+      "url": "http://localhost:4000/",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "Member ID or last name",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "Member ID or last name"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "member_id"
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "text-scoped",
+      "surfaceFingerprint": "sha256:76811d77ab635ef1",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:07.701Z"
+    },
+    {
+      "seq": 2,
+      "action": "click",
+      "reason": "Search for the member by ID.",
+      "url": "http://localhost:4000/search?q=<input:member_id>",
+      "target": {
+        "role": "button",
+        "accessibleName": "Search",
+        "nearbyText": "Member search Member ID or last name Search",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Search"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Member search Member ID or last name Search"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "button[role=button]"
+          }
+        ]
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:7cfa301718506cb1",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:09.817Z"
+    },
+    {
+      "seq": 3,
+      "action": "click",
+      "reason": "Open the member record for the searched member.",
+      "url": "http://localhost:4000/members/<input:member_id>",
+      "target": {
+        "role": "link",
+        "accessibleName": "View",
+        "nearbyText": "View",
+        "tagName": "a",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Results",
+          "anchorInput": "member_id"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "link|View"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "View"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "a[role=link]"
+          }
+        ]
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:9426c12afac4e8c2",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:12.150Z"
+    },
+    {
+      "seq": 4,
+      "action": "click",
+      "reason": "Open the mailing address edit form for this member.",
+      "url": "http://localhost:4000/members/<input:member_id>/edit",
+      "target": {
+        "role": "link",
+        "accessibleName": "Edit mailing address",
+        "nearbyText": "Edit mailing address Edit contact preferences",
+        "tagName": "a",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "link|Edit mailing address"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Edit mailing address Edit contact preferences"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "a[role=link]"
+          }
+        ]
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:805031e65c2efe6c",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:14.395Z"
+    },
+    {
+      "seq": 5,
+      "action": "fill",
+      "reason": "Fill address line 1 with the supplied value.",
+      "url": "http://localhost:4000/members/<input:member_id>/edit",
+      "target": {
+        "role": "textbox",
+        "accessibleName": "Address line 1",
+        "labelText": "Address line 1",
+        "nearbyText": "Address line 1",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address — <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "textbox|Address line 1"
+          },
+          {
+            "rank": 2,
+            "strategy": "label",
+            "expr": "Address line 1"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.line1"
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:cc48c156d1d02445",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:15.562Z"
+    },
+    {
+      "seq": 6,
+      "action": "fill",
+      "reason": "Fill address line 2 field.",
+      "url": "http://localhost:4000/members/<input:member_id>/edit",
+      "target": {
+        "role": "textbox",
+        "accessibleName": "Address line 2",
+        "labelText": "Address line 2",
+        "nearbyText": "Address line 2",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address — <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "textbox|Address line 2"
+          },
+          {
+            "rank": 2,
+            "strategy": "label",
+            "expr": "Address line 2"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.line2"
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:fdb6997cb5592793",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:16.965Z"
+    },
+    {
+      "seq": 7,
+      "action": "fill",
+      "reason": "Fill city field with supplied address.city.",
+      "url": "http://localhost:4000/members/<input:member_id>/edit",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "City",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address — <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "City"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.city"
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "text-scoped",
+      "surfaceFingerprint": "sha256:f9ca0adf0e2874a6",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:18.186Z"
+    },
+    {
+      "seq": 8,
+      "action": "fill",
+      "reason": "Fill the State field with the supplied state.",
+      "url": "http://localhost:4000/members/<input:member_id>/edit",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "State",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address — <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "State"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.state"
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "text-scoped",
+      "surfaceFingerprint": "sha256:f9ca0adf0e2874a6",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:19.377Z"
+    },
+    {
+      "seq": 9,
+      "action": "fill",
+      "reason": "Fill the ZIP code field with the supplied zip.",
+      "url": "http://localhost:4000/members/<input:member_id>/edit",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "ZIP code",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address — <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "ZIP code"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.zip"
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "text-scoped",
+      "surfaceFingerprint": "sha256:f9ca0adf0e2874a6",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:21.040Z"
+    },
+    {
+      "seq": 10,
+      "action": "click",
+      "reason": "All address fields match the inputs; proceed to review the changes.",
+      "url": "http://localhost:4000/members/<input:member_id>/review",
+      "target": {
+        "role": "button",
+        "accessibleName": "Review changes",
+        "nearbyText": "Edit mailing address — <input:member_id> Address line 1 Address line 2 City Stat",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address — <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Review changes"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Edit mailing address — <input:member_id> Address line 1 Address line 2 City Stat"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "button[role=button]"
+          }
+        ]
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:65eb6d0e39cf9af4",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:23.485Z"
+    },
+    {
+      "seq": 11,
+      "action": "assert",
+      "reason": "Assert the review page shows the new address from inputs.",
+      "url": "http://localhost:4000/members/<input:member_id>/review",
+      "effect": "reversible",
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.line1}, {address.line2}, {address.city}, {address.state} {address.zip}"
+            }
+          },
+          "describes": "Assert the review page shows the new address from inputs."
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:28.306Z"
+    },
+    {
+      "seq": 12,
+      "action": "approval_gate",
+      "reason": "Requesting approval to submit the mailing address change.",
+      "url": "http://localhost:4000/members/<input:member_id>/review",
+      "effect": "reversible",
+      "checks": [],
+      "diffFields": [
+        {
+          "label": "textbox near \"Member ID or last name\" in \"Member search\"",
+          "value": {
+            "input": "member_id"
+          }
+        },
+        {
+          "label": "textbox \"Address line 1\" in \"Edit mailing address — <input:member_id>\"",
+          "value": {
+            "input": "address.line1"
+          }
+        },
+        {
+          "label": "textbox \"Address line 2\" in \"Edit mailing address — <input:member_id>\"",
+          "value": {
+            "input": "address.line2"
+          }
+        },
+        {
+          "label": "textbox near \"City\" in \"Edit mailing address — <input:member_id>\"",
+          "value": {
+            "input": "address.city"
+          }
+        },
+        {
+          "label": "textbox near \"State\" in \"Edit mailing address — <input:member_id>\"",
+          "value": {
+            "input": "address.state"
+          }
+        },
+        {
+          "label": "textbox near \"ZIP code\" in \"Edit mailing address — <input:member_id>\"",
+          "value": {
+            "input": "address.zip"
+          }
+        }
+      ],
+      "diffDigest": "sha256:21e0a487d89414ea",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:29.890Z"
+    },
+    {
+      "seq": 13,
+      "action": "click",
+      "reason": "Submit the mailing address change now that it is approved.",
+      "url": "http://localhost:4000/confirmation/CONF-9LY3M2HD",
+      "target": {
+        "role": "button",
+        "accessibleName": "Submit change",
+        "nearbyText": "Review mailing address change Member <input:member_id> — Dana Whitfield Current ",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Review mailing address change"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Submit change"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Review mailing address change Member <input:member_id> — Dana Whitfield Current "
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "button[role=button]"
+          }
+        ]
+      },
+      "effect": "consequential",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:ff4ec09598d9fe45",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:31.547Z"
+    },
+    {
+      "seq": 14,
+      "action": "assert",
+      "reason": "Confirm the application reports the mailing address was updated.",
+      "url": "http://localhost:4000/confirmation/CONF-9LY3M2HD",
+      "effect": "reversible",
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "const": "Mailing address updated."
+          },
+          "describes": "Confirm the application reports the mailing address was updated."
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:33.370Z"
+    },
+    {
+      "seq": 15,
+      "action": "extract",
+      "reason": "Bind the confirmation ID output from the confirmation page.",
+      "url": "http://localhost:4000/confirmation/CONF-9LY3M2HD",
+      "target": {
+        "role": "generic",
+        "accessibleName": "CONF-9LY3M2HD",
+        "nearbyText": "CONF-9LY3M2HD",
+        "tagName": "span",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Confirmation"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "generic|CONF-9LY3M2HD"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "CONF-9LY3M2HD"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "span[role=generic]"
+          }
+        ]
+      },
+      "effect": "reversible",
+      "checks": [],
+      "extractAs": "confirmation_id",
+      "extractRegex": "^CONF-[A-Z0-9]{8}$",
+      "surfaceFingerprint": "sha256:978fc3482208b75e",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:45.191Z"
+    },
+    {
+      "seq": 16,
+      "action": "assert",
+      "reason": "Assert the confirmation page confirms the update with the app's fixed heading text.",
+      "url": "http://localhost:4000/confirmation/CONF-9LY3M2HD",
+      "effect": "reversible",
+      "checks": [
+        {
+          "kind": "text_contains",
+          "target": {
+            "role": "generic",
+            "accessibleName": "CONF-9LY3M2HD",
+            "nearbyText": "CONF-9LY3M2HD",
+            "tagName": "span",
+            "scope": {
+              "containerRole": "region",
+              "containerName": "Confirmation"
+            },
+            "candidates": [
+              {
+                "rank": 1,
+                "strategy": "role+name",
+                "expr": "generic|CONF-9LY3M2HD"
+              },
+              {
+                "rank": 2,
+                "strategy": "text-scoped",
+                "expr": "CONF-9LY3M2HD"
+              },
+              {
+                "rank": 3,
+                "strategy": "structural",
+                "expr": "span[role=generic]"
+              }
+            ]
+          },
+          "value": {
+            "const": "CONF-"
+          },
+          "describes": "Assert the confirmation page confirms the update with the app's fixed heading text."
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-06T08:13:58.775Z"
+    }
+  ],
+  "businessOutcomes": [],
+  "outputs": {
+    "confirmation_id": "CONF-9LY3M2HD"
+  },
+  "authoredBy": {
+    "agent": 16,
+    "human": 0
+  },
+  "appFingerprint": "sha256:bef283b9888161ff"
+}
