@@ -54,6 +54,8 @@ const THINKING_BUDGET: Record<string, number> = {
 
 export type AnthropicOptions = {
   apiKey: string;
+  /** Any Anthropic-compatible endpoint; omitted means Anthropic itself. */
+  baseURL?: string;
   model: string;
   effort: string;
   allowed: readonly ActionName[];
@@ -69,7 +71,7 @@ export class AnthropicModelClient implements ModelClient {
 
   constructor(private readonly o: AnthropicOptions) {
     this.name = o.model;
-    this.client = new Anthropic({ apiKey: o.apiKey });
+    this.client = new Anthropic({ apiKey: o.apiKey, baseURL: o.baseURL });
     this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
@@ -121,7 +123,12 @@ export class AnthropicModelClient implements ModelClient {
           system: req.system,
           tools: [tool as unknown as Anthropic.Tool],
           tool_choice: toolChoice,
-          ...(budget > 0 ? { thinking: { type: "enabled" as const, budget_tokens: budget } } : {}),
+          // Disabled explicitly rather than omitted: some compatible endpoints
+          // (DeepSeek) think by default, and then refuse the forced tool choice.
+          thinking:
+            budget > 0
+              ? { type: "enabled" as const, budget_tokens: budget }
+              : { type: "disabled" as const },
           messages: [{ role: "user", content }],
         });
         return this.parse(message);
@@ -189,13 +196,38 @@ function isRetryable(e: unknown): boolean {
 /**
  * Discovery reads its model configuration from the environment, as
  * `.env.example` documents. Replay never calls this and never needs a key.
+ *
+ * DeepSeek is reached through its Anthropic-compatible endpoint, so both
+ * providers share one client and one parser. A DeepSeek key wins when both are
+ * set. That endpoint ignores `budget_tokens`, so effort only switches thinking
+ * on or off there.
  */
+const PROVIDERS = {
+  deepseek: {
+    keyVar: "DEEPSEEK_API_KEY",
+    baseURL: "https://api.deepseek.com/anthropic",
+    defaultModel: "deepseek-flash",
+  },
+  anthropic: { keyVar: "ANTHROPIC_API_KEY", baseURL: undefined, defaultModel: "claude-sonnet-5-5" },
+} as const;
+
+/** The provider whose key is present, or null; the live test skips on null. */
+export function configuredProvider(): keyof typeof PROVIDERS | null {
+  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  return null;
+}
+
 export function modelFromEnv(allowed: readonly ActionName[]): AnthropicModelClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set; discovery needs a model");
+  const provider = configuredProvider();
+  if (!provider) {
+    throw new Error("neither DEEPSEEK_API_KEY nor ANTHROPIC_API_KEY is set; discovery needs a model");
+  }
+  const p = PROVIDERS[provider];
   return new AnthropicModelClient({
-    apiKey,
-    model: process.env.TRACEPILOT_MODEL ?? "claude-sonnet-5",
+    apiKey: process.env[p.keyVar]!,
+    baseURL: p.baseURL,
+    model: process.env.TRACEPILOT_MODEL || p.defaultModel,
     effort: process.env.TRACEPILOT_EFFORT ?? "medium",
     allowed,
   });

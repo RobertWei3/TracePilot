@@ -76,7 +76,8 @@ export function actTool(allowed: readonly ActionName[]) {
       },
       targetId: {
         ...nullableString,
-        description: "Element id from the CURRENT observation, e.g. obs3:el-12. Ids from earlier observations are invalid.",
+        description:
+          "Element id from the CURRENT observation, e.g. obs3:el-12. Ids from earlier observations are invalid. Optional for text_contains/text_equals asserts: null checks the whole visible page.",
       },
       url: { ...nullableString, description: "Path to navigate to, e.g. /members. navigate only." },
       inputName: {
@@ -138,31 +139,94 @@ export function actTool(allowed: readonly ActionName[]) {
   } as const;
 }
 
+/**
+ * Some models (DeepSeek, observed) fill an unused nullable field with the
+ * string "null" rather than null. Read literally it is a reference to an input
+ * or element named "null", refused as unknown -- one wasted turn per field.
+ * No input, element or output in this grammar can legitimately be named that.
+ */
+const optionalString = z
+  .preprocess((v) => (v === "null" ? null : v), z.string().nullable())
+  .default(null);
+
 export const RawAction = z
   .object({
     action: z.enum(ACTION_NAMES),
     reason: z.string().min(1).max(400),
-    targetId: z.string().nullable().default(null),
-    url: z.string().nullable().default(null),
-    inputName: z.string().nullable().default(null),
-    anchorInput: z.string().nullable().default(null),
-    regionId: z.string().nullable().default(null),
+    targetId: optionalString,
+    url: optionalString,
+    inputName: optionalString,
+    anchorInput: optionalString,
+    regionId: optionalString,
     nextBatch: z.boolean().nullable().default(null),
     assertKind: z
-      .enum(["url_matches", "element_exists", "element_absent", "text_equals", "text_contains"])
-      .nullable()
+      .preprocess(
+        (v) => (v === "null" ? null : v),
+        z.enum(["url_matches", "element_exists", "element_absent", "text_equals", "text_contains"]).nullable(),
+      )
       .default(null),
-    assertPattern: z.string().nullable().default(null),
-    assertInput: z.string().nullable().default(null),
-    assertTemplate: z.string().nullable().default(null),
-    assertConst: z.string().nullable().default(null),
-    outputName: z.string().nullable().default(null),
-    outcomeCode: z.string().nullable().default(null),
+    assertPattern: optionalString,
+    assertInput: optionalString,
+    assertTemplate: optionalString,
+    assertConst: optionalString,
+    outputName: optionalString,
+    outcomeCode: optionalString,
   })
   .strip();
 export type RawAction = z.infer<typeof RawAction>;
 
 export type Rejection = { reason: string };
+
+export type ValidationContext = {
+  observation: Observation | null;
+  inputNames: string[];
+  outputNames: string[];
+  /**
+   * Inputs too short to be tagged in observations (MIN_TAGGED_VALUE_LENGTH),
+   * by name. The model sees these in clear, so it can copy one into an
+   * assertion as a literal -- which pins the capability to this run's subject.
+   */
+  untaggedInputs?: Record<string, string>;
+  /** Declared output patterns, by name, so a copy is caught even before extraction. */
+  outputPatterns?: Record<string, string>;
+  /** Outputs bound so far in this run, by name. */
+  boundOutputs?: Record<string, string>;
+};
+
+/**
+ * Names of outputs whose value appears in the literal part of an assertion.
+ * An output is what the application issued this run -- a confirmation id is
+ * different every time -- so a check that spells it out cannot hold on replay.
+ */
+function copiedOutputs(literal: string, ctx: ValidationContext): string[] {
+  const names = new Set<string>();
+  for (const [name, value] of Object.entries(ctx.boundOutputs ?? {})) {
+    if (value && literal.includes(value)) names.add(name);
+  }
+  for (const [name, pattern] of Object.entries(ctx.outputPatterns ?? {})) {
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern.replace(/^\^/, "").replace(/\$$/, ""));
+    } catch {
+      continue;
+    }
+    // A pattern that matches nothing at all would refuse every literal.
+    if (!re.test("") && re.test(literal)) names.add(name);
+  }
+  return [...names];
+}
+
+/**
+ * Names of untagged inputs whose value appears as a whole word in the literal
+ * part of an assertion. Whole-word and case-sensitive, so "MA" is caught in
+ * "Brookline, MA 02445" but not in "MAIN" or "Manage".
+ */
+function copiedInputs(literal: string, untagged: Record<string, string>): string[] {
+  const words = new Set(literal.split(/[^A-Za-z0-9]+/));
+  return Object.entries(untagged)
+    .filter(([, value]) => value && words.has(value))
+    .map(([name]) => name);
+}
 
 /**
  * `{name}` placeholders in a pattern or template that name no declared input.
@@ -204,7 +268,7 @@ function checkTargetId(targetId: string, observation: Observation | null): Rejec
  */
 function validateRecognizer(
   raw: RawAction,
-  ctx: { observation: Observation | null; inputNames: string[]; outputNames: string[] },
+  ctx: ValidationContext,
   what: string,
 ): Rejection | null {
   const { observation } = ctx;
@@ -264,6 +328,25 @@ function validateRecognizer(
         };
       }
     }
+    // Only the names go in the reason: the value is the subject's data, and
+    // the reason is recorded.
+    const literal = raw.assertTemplate?.replace(/\{[^}]+\}/g, " ") ?? raw.assertConst ?? "";
+    const copied = copiedInputs(literal, ctx.untaggedInputs ?? {});
+    if (copied.length) {
+      return {
+        reason: `the ${raw.assertTemplate ? "template" : "constant"} contains the value of ${copied
+          .map((c) => `{${c}}`)
+          .join(", ")} as literal text, which would only hold for this run's inputs. Reference it by name in assertTemplate instead, e.g. '{address.city}, {address.state} {address.zip}'.`,
+      };
+    }
+    const issued = copiedOutputs(literal, ctx);
+    if (issued.length) {
+      return {
+        reason: `the ${raw.assertTemplate ? "template" : "constant"} contains the value of output ${issued
+          .map((o) => `"${o}"`)
+          .join(", ")}, which the application issues afresh on every run. Assert only its fixed part instead, such as a prefix the application always shows (e.g. assertConst 'CONF-').`,
+      };
+    }
   }
 
   return null;
@@ -276,11 +359,7 @@ function validateRecognizer(
  */
 export function validateAction(
   raw: RawAction,
-  ctx: {
-    observation: Observation | null;
-    inputNames: string[];
-    outputNames: string[];
-  },
+  ctx: ValidationContext,
 ): Rejection | null {
   const needsTarget: ActionName[] = ["click", "fill", "press", "extract"];
   const { observation } = ctx;

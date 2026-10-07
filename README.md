@@ -117,7 +117,7 @@ Requires Node 24+.
 ```bash
 npm install
 npx playwright install chromium
-cp .env.example .env      # add ANTHROPIC_API_KEY for discovery only
+cp .env.example .env      # add DEEPSEEK_API_KEY (or ANTHROPIC_API_KEY) for discovery only
 ```
 
 Run the application:

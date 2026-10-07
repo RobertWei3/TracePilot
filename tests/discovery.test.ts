@@ -63,6 +63,15 @@ test("navigate is confined to a path on the application under test", () => {
   assert.equal(check({ action: "navigate", url: "/members/M-1002" }), null);
 });
 
+test('the string "null" in an unused field reads as null, not as a name', () => {
+  // DeepSeek sends this for fields it means to leave empty; read literally it
+  // was refused as an unknown anchorInput, one wasted turn per occurrence.
+  const raw = RawAction.parse({ action: "navigate", reason: "go", url: "/members", anchorInput: "null", assertKind: "null" });
+  assert.equal(raw.anchorInput, null);
+  assert.equal(raw.assertKind, null);
+  assert.equal(check({ action: "navigate", url: "/members", anchorInput: "null" }), null);
+});
+
 test("an assert pattern that cannot compile is refused at authoring time", () => {
   const bad = check({ action: "assert", assertKind: "url_matches", assertPattern: "/members/(" });
   assert.match(bad!.reason, /not a valid regular expression/);
@@ -98,6 +107,49 @@ test("a template composing no input at all is a constant in disguise", () => {
     check({ action: "assert", assertKind: "text_equals", assertTemplate: "Mailing address updated." })!.reason,
     /assertConst/,
   );
+});
+
+test("a short input copied into an assertion as a literal is refused, by name", () => {
+  // A state code is too short to tag, so the model reads "MA" in clear and
+  // tends to write it into the check -- which then fails for every other member.
+  const withState = (partial: Record<string, unknown>) =>
+    validateAction(RawAction.parse({ reason: "because", action: "assert", assertKind: "text_contains", ...partial }), {
+      observation: obs(),
+      inputNames,
+      outputNames,
+      untaggedInputs: { "address.state": "MA" },
+    });
+
+  const template = withState({ assertTemplate: "{address.city}, MA" })!.reason;
+  assert.match(template, /\{address\.state\}/);
+  assert.doesNotMatch(template, /\bMA\b/, "the reason is recorded, so it must not carry the value");
+  assert.match(withState({ assertConst: "Brookline, MA 02445" })!.reason, /\{address\.state\}/);
+
+  // Whole words only, and case-sensitive: the application's own text survives.
+  assert.equal(withState({ assertTemplate: "{address.city}, {address.state}" }), null);
+  assert.equal(withState({ assertConst: "MAIN OFFICE -- Manage mailing address" }), null);
+});
+
+test("an issued output copied into an assertion is refused, before and after extraction", () => {
+  const withOutputs = (partial: Record<string, unknown>, boundOutputs: Record<string, string> = {}) =>
+    validateAction(RawAction.parse({ reason: "because", action: "assert", assertKind: "text_contains", ...partial }), {
+      observation: obs(),
+      inputNames,
+      outputNames,
+      outputPatterns: { confirmation_id: "^CONF-[A-Z0-9]{8}$" },
+      boundOutputs,
+    });
+
+  // Caught by the declared pattern before anything is bound...
+  assert.match(withOutputs({ assertConst: "Confirmation ID CONF-X393YMTX" })!.reason, /"confirmation_id"/);
+  // ...and by the bound value, which need not fit the pattern's shape.
+  assert.match(
+    withOutputs({ assertConst: "Ref 1234-5678" }, { confirmation_id: "1234-5678" })!.reason,
+    /"confirmation_id"/,
+  );
+  // The fixed part is what a replayable check asserts, as the oracle does.
+  assert.equal(withOutputs({ assertConst: "CONF-" }), null);
+  assert.equal(withOutputs({ assertConst: "Mailing address updated." }), null);
 });
 
 test("an element assertion is scoped to the current observation like any other target", () => {

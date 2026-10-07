@@ -68,6 +68,11 @@ export class RunStore {
   private seq = 0;
   readonly dir: string;
   readonly logPath: string;
+  /**
+   * Called with each record after projection, so a live view can never show
+   * more than the log on disk does.
+   */
+  onEvent?: (record: Record<string, unknown>) => void;
 
   constructor(
     readonly runId: string,
@@ -84,6 +89,7 @@ export class RunStore {
       EVENT_SPEC,
     );
     appendFileSync(this.logPath, JSON.stringify(record) + "\n", "utf8");
+    this.onEvent?.(record as Record<string, unknown>);
   }
 
   /** Writes a masked screenshot, or records why no image exists. */

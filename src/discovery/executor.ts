@@ -19,6 +19,7 @@ import { SafetyViolation, checkAction, classifyEffect, redact } from "../safety/
 import {
   describe as describeEl,
   fingerprint,
+  MIN_TAGGED_VALUE_LENGTH,
   summarize,
   tagInputs,
   type ObservedElement,
@@ -144,6 +145,22 @@ export class DiscoveryExecutor {
     return Object.keys(this.o.ctx.inputs);
   }
 
+  /** See ValidationContext.untaggedInputs. */
+  private get untaggedInputs(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(this.o.ctx.inputs).filter(([, v]) => v && v.length < MIN_TAGGED_VALUE_LENGTH),
+    );
+  }
+
+  private get outputPatterns(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(this.o.task.outputs).flatMap(([name, spec]) => {
+        const pattern = (spec as { pattern?: string }).pattern;
+        return pattern ? [[name, pattern]] : [];
+      }),
+    );
+  }
+
   private get outputNames(): string[] {
     return Object.keys(this.o.task.outputs);
   }
@@ -255,6 +272,9 @@ export class DiscoveryExecutor {
       observation: this.obs,
       inputNames: this.inputNames,
       outputNames: this.outputNames,
+      untaggedInputs: this.untaggedInputs,
+      outputPatterns: this.outputPatterns,
+      boundOutputs: this.outputs,
     });
     if (rejection) return this.refuse(rejection.reason, this.describeProposal(raw));
 
@@ -549,13 +569,33 @@ export class DiscoveryExecutor {
     }));
     if (!outcome.ok) {
       return this.refuse(
-        `that assertion does not hold here. Expected ${outcome.expected}; observed ${outcome.observed}`,
+        `that assertion does not hold here. Expected ${outcome.expected}; observed ${outcome.observed}` +
+          (await this.textHint(check)),
         proposed,
       );
     }
     this.record({ action: "assert", reason: raw.reason, effect: "reversible", checks: [check] });
     if (this.sawConsequential) this.verifiedAfterWrite = true;
     return this.accept(proposed, `ok, verified: ${outcome.expected}`);
+  }
+
+  /**
+   * A refused text check on a target says only that the target is wrong, which
+   * a model tends to answer by proposing the same target again. Checking the
+   * whole page as well turns the refusal into a direction: the text is
+   * elsewhere, or it is not on this page at all.
+   */
+  private async textHint(check: Check): Promise<string> {
+    if (!check.target || (check.kind !== "text_contains" && check.kind !== "text_equals")) return "";
+    const { target: _, ...rest } = check;
+    const page = await evaluateCheck(
+      this.o.surface,
+      { ...rest, kind: "text_contains" },
+      this.o.ctx,
+    ).catch(() => null);
+    return page?.ok
+      ? ". The expected text IS on this page, just not inside that element: omit targetId to check the whole page, or target the element that actually holds it."
+      : ". The expected text is not anywhere on the visible page either.";
   }
 
   private async doExtract(raw: RawAction, proposed: string): Promise<Turn> {
@@ -1003,6 +1043,9 @@ export class DiscoveryExecutor {
         observation: this.obs,
         inputNames: this.inputNames,
         outputNames: this.outputNames,
+        untaggedInputs: this.untaggedInputs,
+        outputPatterns: this.outputPatterns,
+        boundOutputs: this.outputs,
       });
       if (again) {
         this.note = `the operator asked to retry, but that action is no longer valid: ${again.reason}`;
