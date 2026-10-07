@@ -1,28 +1,39 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { TaskContract } from "../contracts/index.js";
+import { DiscoveryTrace, TaskContract, type ExecutionResult } from "../contracts/index.js";
 import { loadPolicy, registerSecret } from "../safety/index.js";
 import { Surface } from "../browser/index.js";
 import { BudgetLedger, RunStore } from "../observability/index.js";
 import { ControlLedger, OperatorConsole } from "../handoff/index.js";
 import { flatten, type ApprovalMode, type ResolveContext } from "../workflow/index.js";
 import { DiscoveryExecutor, allowedActions, modelFromEnv } from "../discovery/index.js";
+import { CompileError, compile } from "../compiler/index.js";
+import { loadCapability, loadValues, operatorSecrets, replay } from "../replay/index.js";
 
 /**
- * The discovery entry point.
+ * The entry point for the three halves of the loop: discover a workflow with a
+ * model, compile the run into a capability, and replay that capability with no
+ * model at all.
  *
  * Its only job is wiring: it resolves the run's values and credentials, opens
- * one browser, and hands the loop the components it does not own. Nothing here
- * decides anything about the workflow -- which is why the same executor runs
- * unchanged under test with a scripted model.
+ * one browser, and hands the executors the components they do not own.
+ * Nothing here decides anything about the workflow -- which is why the same
+ * executors run unchanged under test.
  */
 function usage(): never {
   console.error(
     [
       "usage: npm run tp -- discover --task <file> --values <file> [options]",
+      "       npm run tp -- compile  --run <dir> --task <file> [--out <dir>]",
+      "       npm run tp -- replay   --capability <file> --values <file> [options]",
       "",
       "  --task    <file>   task contract, e.g. tasks/update-mailing-address.json",
       "  --values  <file>   input values, e.g. values/member-1002.json",
+      "  --run     <dir>    a successful discovery run, e.g. runs/discovery-...",
+      "  --out     <dir>    where compiled capabilities go, default capabilities/",
+      "  --capability <file>  a compiled capability, e.g. capabilities/<id>.v1.json",
+      "",
+      "discover and replay:",
       "  --policy  <file>   default policy.json",
       "  --base    <url>    application origin, default http://localhost:4000",
       "  --headed           show the browser (default; --headless to hide it)",
@@ -107,23 +118,7 @@ async function discover(argv: string[]): Promise<number> {
       interactive,
     }).run();
 
-    const line = "-".repeat(72);
-    console.log(
-      [
-        "",
-        line,
-        `${result.outcome} [${result.reasonCode}]  run ${result.runId}`,
-        line,
-        `outputs   : ${JSON.stringify(result.outputs ?? {})}`,
-        result.businessOutcome ? `business  : ${result.businessOutcome.code}` : "",
-        `budgets   : ${result.budgets.actionSteps} steps | ${result.budgets.observations} observations | ${result.budgets.modelCalls} model calls`,
-        `fragility : ${result.drift.stepsResolvedBelowRank1.length} step(s) below rank 1 (${result.drift.score.toFixed(2)})`,
-        `evidence  : ${result.evidenceDir}`,
-        line,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
+    printResult(result);
     return result.outcome === "success" ? 0 : 1;
   } finally {
     await surface.close();
@@ -143,10 +138,97 @@ function printEvent(e: Record<string, unknown>): void {
   console.log(`${time} ${mark} ${type.padEnd(22)} ${what}${where}`);
 }
 
+function printResult(result: ExecutionResult): void {
+  const line = "-".repeat(72);
+  console.log(
+    [
+      "",
+      line,
+      `${result.outcome} [${result.reasonCode}]  run ${result.runId}`,
+      line,
+      `outputs   : ${JSON.stringify(result.outputs ?? {})}`,
+      result.businessOutcome ? `business  : ${result.businessOutcome.code}` : "",
+      `budgets   : ${result.budgets.actionSteps} steps | ${result.budgets.observations} observations | ${result.budgets.modelCalls} model calls`,
+      `fragility : ${result.drift.stepsResolvedBelowRank1.length} step(s) below rank 1 (${result.drift.score.toFixed(2)})`,
+      `evidence  : ${result.evidenceDir}`,
+      line,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+/**
+ * Trace -> capability. Deterministic and offline: no browser, no model. The
+ * version is one past the highest already in the output directory, so an
+ * earlier capability is never overwritten.
+ */
+function compileCmd(argv: string[]): number {
+  const runDir = flag(argv, "--run");
+  const taskFile = flag(argv, "--task");
+  if (!runDir || !taskFile) usage();
+  const outDir = flag(argv, "--out") ?? "capabilities";
+
+  const trace = DiscoveryTrace.parse(JSON.parse(readFileSync(path.join(runDir, "trace.json"), "utf8")));
+  const task = TaskContract.parse(JSON.parse(readFileSync(taskFile, "utf8")));
+
+  mkdirSync(outDir, { recursive: true });
+  const prefix = `${task.taskId}.v`;
+  const versions = readdirSync(outDir)
+    .filter((f) => f.startsWith(prefix) && f.endsWith(".json"))
+    .map((f) => Number(f.slice(prefix.length, -".json".length)))
+    .filter(Number.isInteger);
+  const version = Math.max(0, ...versions) + 1;
+
+  let compiled;
+  try {
+    compiled = compile(trace, task, { version, createdAt: new Date().toISOString() });
+  } catch (e) {
+    if (!(e instanceof CompileError)) throw e;
+    console.error(`cannot compile ${runDir}: ${e.message}`);
+    return 1;
+  }
+  const { capability, notes } = compiled;
+  const file = path.join(outDir, `${prefix}${version}.json`);
+  writeFileSync(file, JSON.stringify(capability, null, 2) + "\n", "utf8");
+
+  console.log(`${capability.status}  ${file}  (${capability.steps.length} steps, from ${trace.runId})`);
+  for (const n of notes) console.log(`  note: ${n}`);
+  return 0;
+}
+
+async function replayCmd(argv: string[]): Promise<number> {
+  const capFile = flag(argv, "--capability");
+  const valuesFile = flag(argv, "--values");
+  if (!capFile || !valuesFile) usage();
+
+  const capability = loadCapability(capFile);
+  const baseUrl = (flag(argv, "--base") ?? capability.origin).replace(/\/$/, "");
+  const approvedBy = flag(argv, "--approved-by");
+  const result = await replay({
+    capability,
+    values: loadValues(valuesFile),
+    policy: loadPolicy(flag(argv, "--policy") ?? "policy.json"),
+    baseUrl,
+    headless: argv.includes("--headless"),
+    slowMo: Number(flag(argv, "--slow") ?? 0) || undefined,
+    onEvent: argv.includes("--quiet") ? undefined : printEvent,
+    approval: approvedBy
+      ? { mode: "pre_approved", approvedBy, at: new Date().toISOString() }
+      : { mode: "interactive" },
+    interactive: !argv.includes("--no-handoff"),
+    secrets: operatorSecrets(),
+  });
+  printResult(result);
+  return result.outcome === "success" ? 0 : 1;
+}
+
 async function main(): Promise<void> {
-  const argv = process.argv.slice(2);
-  if (argv[0] !== "discover") usage();
-  process.exit(await discover(argv.slice(1)));
+  const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd === "discover") process.exit(await discover(rest));
+  if (cmd === "compile") process.exit(compileCmd(rest));
+  if (cmd === "replay") process.exit(await replayCmd(rest));
+  usage();
 }
 
 await main();

@@ -124,8 +124,16 @@ export class DiscoveryExecutor {
   /** Set by an approval, consumed by the one consequential action it authorises. */
   private approvedDigest: string | null = null;
   private sawConsequential = false;
-  /** Set once a check has been authored after the last consequential action. */
-  private verifiedAfterWrite = false;
+  /**
+   * What the last write changed: the inputs filled before it, less any that
+   * appear in the URL it was made from -- those identify the record (the
+   * member id in /members/M-1002/review), they are not what was written.
+   */
+  private writtenInputs: string[] = [];
+  /** Where the last write left the page. The record is read back elsewhere. */
+  private writeLanding: string | null = null;
+  /** Set once the last write's values have been asserted on another page. */
+  private readBack = false;
 
   private obs: Observation | null = null;
   private note: string | null = null;
@@ -436,6 +444,18 @@ export class DiscoveryExecutor {
   }
 
   private async doNavigate(raw: RawAction, proposed: string): Promise<Turn> {
+    // A URL carrying something this run was issued (a confirmation id) can
+    // only be typed by this run. Replay will never know it, so the step could
+    // not compile -- and the usual reason for it is re-reading an output that
+    // is already bound.
+    const issued = Object.entries(this.outputs).filter(([, v]) => v && raw.url!.includes(v));
+    if (issued.length) {
+      return this.refuse(
+        `that URL contains the value of output ${issued.map(([n]) => `"${n}"`).join(", ")}, which a replay cannot know. ` +
+          "It is already bound; there is no need to go back for it. Navigate by clicking links instead.",
+        proposed,
+      );
+    }
     this.o.budgets.actionSteps += 1;
     const url = this.absolute(raw.url!);
     const res = await this.o.surface.navigate(url);
@@ -495,6 +515,7 @@ export class DiscoveryExecutor {
     }
 
     const descriptor = describeEl(el, raw.anchorInput ? { anchorInput: raw.anchorInput } : {});
+    const from = this.taggedUrl();
     this.o.budgets.actionSteps += 1;
     const res = await this.o.surface.act(raw.action === "press" ? "press" : "click", descriptor);
     if (!res.ok) {
@@ -505,7 +526,10 @@ export class DiscoveryExecutor {
     if (effect === "consequential") {
       this.approvedDigest = null;
       this.sawConsequential = true;
-      this.verifiedAfterWrite = false;
+      this.writtenInputs = [...new Set(this.pendingFills.map((f) => f.inputName))].filter(
+        (name) => !from.includes(`<input:${name}>`),
+      );
+      this.readBack = false;
       this.pendingFills = [];
     }
     this.record({
@@ -516,6 +540,7 @@ export class DiscoveryExecutor {
       resolved: res,
     });
     await this.afterAction();
+    if (effect === "consequential") this.writeLanding = this.pathOf(this.obs!.url);
     return this.accept(proposed, `ok, now at ${this.pathOf(this.obs!.url)}`);
   }
 
@@ -575,8 +600,27 @@ export class DiscoveryExecutor {
       );
     }
     this.record({ action: "assert", reason: raw.reason, effect: "reversible", checks: [check] });
-    if (this.sawConsequential) this.verifiedAfterWrite = true;
+    if (this.sawConsequential && this.isReadBack(check)) this.readBack = true;
     return this.accept(proposed, `ok, verified: ${outcome.expected}`);
+  }
+
+  /**
+   * Whether an assertion reads the last write back from the record: it is
+   * made somewhere other than where the write landed, and it checks a value
+   * that was written. A write that filled nothing (a delete, say) has no
+   * value to read back, so any later check on another page has to do.
+   */
+  private isReadBack(check: Check): boolean {
+    if (this.pathOf(this.o.surface.currentUrl()) === this.writeLanding) return false;
+    if (this.writtenInputs.length === 0) return true;
+    const v = check.value;
+    const refs =
+      v && "input" in v
+        ? [v.input]
+        : v && "transform" in v && v.transform.op === "template"
+          ? [...(v.transform.format ?? "").matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!)
+          : [];
+    return refs.some((r) => this.writtenInputs.includes(r));
   }
 
   /**
@@ -586,20 +630,39 @@ export class DiscoveryExecutor {
    * elsewhere, or it is not on this page at all.
    */
   private async textHint(check: Check): Promise<string> {
-    if (!check.target || (check.kind !== "text_contains" && check.kind !== "text_equals")) return "";
+    if (check.kind !== "text_contains" && check.kind !== "text_equals") return "";
     const { target: _, ...rest } = check;
-    const page = await evaluateCheck(
-      this.o.surface,
-      { ...rest, kind: "text_contains" },
-      this.o.ctx,
-    ).catch(() => null);
-    return page?.ok
-      ? ". The expected text IS on this page, just not inside that element: omit targetId to check the whole page, or target the element that actually holds it."
-      : ". The expected text is not anywhere on the visible page either.";
+    const onPage = (value: Check["value"]) =>
+      evaluateCheck(this.o.surface, { ...rest, kind: "text_contains", value }, this.o.ctx)
+        .then((r) => r.ok)
+        .catch(() => false);
+
+    if (check.target && (await onPage(check.value))) {
+      return ". The expected text IS on this page, just not inside that element: omit targetId to check the whole page, or target the element that actually holds it.";
+    }
+    // A composed value can be absent while every part of it is present: a
+    // record page that shows the street and the city line in separate rows.
+    // Said plainly, that is one correction; unsaid, the model retries the
+    // same arrangement until the loop calls it a dead end.
+    const v = check.value;
+    if (v && "transform" in v && v.transform.op === "template") {
+      const names = [...(v.transform.format ?? "").matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
+      const each = await Promise.all(names.map((input) => onPage({ input })));
+      if (names.length > 1 && each.every(Boolean)) {
+        return `. Every value in that template IS on this page, just not arranged that way: assert them separately with assertInput, or compose only values the page shows together.`;
+      }
+    }
+    return check.target ? ". The expected text is not anywhere on the visible page either." : "";
   }
+
 
   private async doExtract(raw: RawAction, proposed: string): Promise<Turn> {
     const name = raw.outputName!;
+    if (this.outputs[name] !== undefined) {
+      // Live runs spent many turns travelling back to re-read a value they
+      // held. Bound is bound; say so before any of that happens.
+      return this.refuse(`"${name}" is already bound. Do not extract it again; carry on with the goal.`, proposed);
+    }
     const el = this.element(raw.targetId!);
     const descriptor = describeEl(el, raw.anchorInput ? { anchorInput: raw.anchorInput } : {});
     const text = await this.o.surface.textOf(descriptor);
@@ -656,7 +719,11 @@ export class DiscoveryExecutor {
     const digest =
       "sha256:" + createHash("sha256").update(JSON.stringify(fields)).digest("hex").slice(0, 16);
 
-    if (this.o.approval.mode === "pre_approved") {
+    // A pre-approval authorises the one write the operator expected, not every
+    // write the run attempts. A second goes to a person like any other -- and
+    // with nobody at the console, it is declined.
+    const standing = this.o.approval.mode === "pre_approved" && !this.approvals.some((a) => a.mode === "pre_approved");
+    if (standing && this.o.approval.mode === "pre_approved") {
       this.approvedDigest = digest;
       this.approvals.push({
         stepId: this.stepId(this.seq + 1),
@@ -760,10 +827,12 @@ export class DiscoveryExecutor {
         proposed,
       );
     }
-    if (this.sawConsequential && !this.verifiedAfterWrite) {
+    if (this.sawConsequential && !this.readBack) {
       return this.refuse(
-        "cannot finish: nothing has been asserted since the change was submitted. " +
-          "Re-read the record and assert the new value was actually stored.",
+        "cannot finish: the change has not been read back. A confirmation says the application " +
+          "accepted it, not that it was stored. Open the record that was changed and assert the new " +
+          `values there, referencing ${this.writtenInputs.map((n) => `{${n}}`).join(", ") || "the inputs"}. ` +
+          "Values the page shows in separate places need separate assertions.",
         proposed,
       );
     }
@@ -831,6 +900,8 @@ export class DiscoveryExecutor {
     resolved?: { rank: number; strategy: string };
     authoredBy?: "agent" | "human";
     unresolved?: boolean;
+    /** Where the step left the page, when that is not where the page is now. */
+    url?: string;
   }): void {
     this.seq += 1;
     const id = this.stepId(this.seq);
@@ -846,7 +917,7 @@ export class DiscoveryExecutor {
         seq: this.seq,
         action: step.action,
         reason: redact(step.reason).slice(0, 200),
-        url: this.taggedUrl(),
+        url: step.url !== undefined ? tagInputs(step.url, this.o.ctx.inputs) : this.taggedUrl(),
         ...(step.target ? { target: step.target } : {}),
         ...(step.value ? { value: step.value } : {}),
         effect: step.effect,
@@ -1102,9 +1173,11 @@ export class DiscoveryExecutor {
     }
   }
 
-  private absorbHumanSteps(recorded: { eventType: string; element: ObservedElement; matchedInput: string | null }[]): void {
-    for (const action of recorded) {
-      if (action.eventType === "submit") continue;
+  private absorbHumanSteps(
+    recorded: { eventType: string; element: ObservedElement; matchedInput: string | null; url: string }[],
+  ): void {
+    const kept = recorded.filter((a) => a.eventType !== "submit");
+    for (const [i, action] of kept.entries()) {
       const descriptor = HumanRecorder.toDescriptor(action as never);
       const resolvedAction: TraceStep["action"] =
         action.eventType === "fill" || action.eventType === "select" ? "fill" : "click";
@@ -1119,6 +1192,10 @@ export class DiscoveryExecutor {
         effect: "reversible",
         authoredBy: "human",
         unresolved: resolvedAction === "fill" && !action.matchedInput,
+        // A trace step records where it left the page. These are absorbed only
+        // after the person hands back, when the page is wherever they ended,
+        // so each one's is where the next action happened instead.
+        ...(kept[i + 1] ? { url: kept[i + 1]!.url } : {}),
       });
     }
   }

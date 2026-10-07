@@ -101,6 +101,8 @@ export class ReplayExecutor {
   /** Set once a consequential step has run: recovery must never rewind past it. */
   private consequentialDone = false;
   private lastPath = "/";
+  /** The most recent hand-off, for a run that pauses rather than resumes. */
+  private lastInterventionId: string | null = null;
 
   constructor(private readonly o: ReplayOptions) {}
 
@@ -143,6 +145,14 @@ export class ReplayExecutor {
         try {
           await this.runStep(step);
         } catch (e) {
+          if (e instanceof Escalate) {
+            // A person takes over here and the run continues from wherever
+            // they hand it back -- this executor invocation does not end.
+            const next = await this.handOff(e);
+            if (typeof next !== "number") return next;
+            cursor = next - 1;
+            continue;
+          }
           if (!(e instanceof RetryFrom)) throw e;
           store.event({
             type: "resumed_after_recovery",
@@ -185,6 +195,17 @@ export class ReplayExecutor {
     if (step.action === "approval_gate") {
       await this.approve(step);
     } else {
+      if (step.effect === "consequential" && this.approvals.length === 0) {
+        // The artifact contract already requires a gate before every write;
+        // this holds at run time too, whatever path led here -- a resume, a
+        // rewind, a hand-back that skipped ahead.
+        throw new Terminal("safety_violation", "APPROVAL_MISSING", {
+          step,
+          expected: "a recorded approval before this consequential step",
+          observed: "no approval has been recorded in this run",
+          safety: { rule: "approval_required", attempted: `${step.action} ${step.stepId}` },
+        });
+      }
       await this.perform(step);
     }
 
@@ -484,6 +505,19 @@ export class ReplayExecutor {
       return new Terminal("business_outcome", "BUSINESS_OUTCOME", { step, business });
     }
 
+    if (this.o.interactive) {
+      // A person at the console can often do what the recording could not --
+      // a relabelled button is obvious to someone looking at it. Offered only
+      // interactively; unattended, a divergence stays a reportable failure.
+      return new Escalate(
+        step,
+        fallback,
+        expected,
+        observed,
+        "replay could not complete this step as recorded; perform it by hand and answer step_done, or take over entirely",
+      );
+    }
+
     return new Terminal("failure", fallback, {
       step,
       expected,
@@ -707,6 +741,18 @@ export class ReplayExecutor {
         "recovery did not restore the state this step expects",
       );
     }
+    if (this.o.interactive) {
+      // Typically a hand-back that did not leave the page where the next step
+      // starts -- "step_done" for a step that was not done. The answer goes
+      // back to the person rather than ending the run they are part of.
+      throw new Escalate(
+        step,
+        "PRECONDITION_FAILED",
+        failed.expected,
+        failed.observed,
+        "the page is not in the state this step starts from; put it there and answer resume, or take over",
+      );
+    }
     throw new Terminal("failure", "PRECONDITION_FAILED", {
       step,
       expected: failed.expected,
@@ -773,7 +819,10 @@ export class ReplayExecutor {
       return this.finish(e.outcome, e.reasonCode, e.detail);
     }
     if (e instanceof Escalate) {
-      return this.escalate(e);
+      // Raised outside the step loop, so there is no step sequence to resume
+      // into: a hand-back pauses the run instead.
+      const next = await this.handOff(e);
+      return typeof next === "number" ? this.pause(e, "control returned outside the step sequence") : next;
     }
     if (e instanceof SafetyViolation) {
       this.o.store.event({
@@ -802,10 +851,20 @@ export class ReplayExecutor {
   }
 
   /**
-   * Escalation ends this executor invocation with lifecycle "awaiting_human"
-   * and no terminal outcome. The run is not finished; a person now owns it.
+   * Hands control to a person, and takes it back on their answer. Returns the
+   * run's result when they end it, or the position in `steps` to continue from
+   * -- a position, not `step.index`, which an artifact may number from 1:
+   *
+   *   step_done      they performed this step; continue with the next
+   *   resume, retry  run this step again from the state they left
+   *   complete       they finished the workflow; verify and extract
+   *   abort          stop
+   *
+   * Continuing goes through runStep, so the step's preconditions are
+   * re-verified against whatever the person left -- control never returns on
+   * the strength of their say-so alone.
    */
-  private async escalate(e: Escalate): Promise<ExecutionResult> {
+  private async handOff(e: Escalate): Promise<ExecutionResult | number> {
     const handled = await this.o.operator.handle({
       kind: "replay_unrecoverable",
       subject: {
@@ -824,6 +883,7 @@ export class ReplayExecutor {
       reason: e.reason,
       reasonCode: e.reasonCode,
     });
+    this.lastInterventionId = handled.request.interventionId;
 
     if (handled.response === "abort") {
       return this.finish(
@@ -856,13 +916,30 @@ export class ReplayExecutor {
       }
     }
 
-    // resume / retry / step_done all re-verify before the agent acts again.
-    try {
-      await this.verifyPreconditions(e.step, { afterRecovery: true });
-    } catch {
-      return this.pause(e, handled.request.interventionId, "state did not hold after handback");
+    if (handled.response === "step_done") {
+      // A write the person made by hand is still a write: recovery must not
+      // rewind past it afterwards.
+      if (e.step.effect === "consequential") this.consequentialDone = true;
+      this.o.store.event({
+        type: "resumed_after_handoff",
+        actor: "AGENT",
+        stepId: e.step.stepId,
+        reason: "the operator performed this step; continuing with the next",
+      });
+      return this.positionOf(e.step) + 1;
     }
-    return this.pause(e, handled.request.interventionId, `operator chose ${handled.response}`);
+
+    this.o.store.event({
+      type: "resumed_after_handoff",
+      actor: "AGENT",
+      stepId: e.step.stepId,
+      reason: `operator chose ${handled.response}; re-running this step from the state they left`,
+    });
+    return this.positionOf(e.step);
+  }
+
+  private positionOf(step: Step): number {
+    return this.o.capability.steps.findIndex((s) => s.stepId === step.stepId);
   }
 
   /** After a manual completion, re-read every declared output from the page. */
@@ -880,7 +957,8 @@ export class ReplayExecutor {
     }
   }
 
-  private pause(e: Escalate, interventionId: string, why: string): ExecutionResult {
+  private pause(e: Escalate, why: string): ExecutionResult {
+    const interventionId = this.lastInterventionId ?? "(none)";
     this.o.store.event({
       type: "run_paused",
       actor: "SYSTEM",

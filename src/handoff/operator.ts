@@ -24,11 +24,23 @@ export type InterventionInput = {
   allowedResponses?: OperatorResponse[];
 };
 
+/**
+ * What a person does with an intervention: operate the live browser, then
+ * answer. The console's own implementation reads the answer from stdin; a
+ * test supplies one that drives the same page with real browser input, which
+ * is what lets the takeover path be exercised end to end.
+ */
+export type Operator = (request: InterventionRequest, surface: Surface) => Promise<OperatorResponse>;
+
 export type Handled = {
   request: InterventionRequest;
   response: OperatorResponse;
   recorded: RecordedAction[];
 };
+
+function clip(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
 
 /**
  * The CLI operator interface. Two things it deliberately does *not* do:
@@ -45,6 +57,8 @@ export class OperatorConsole {
     private readonly inputs: Record<string, string>,
     /** Non-interactive mode for CI and tests: escalations become terminal. */
     private readonly interactive: boolean,
+    /** Who answers. Defaults to a person at this terminal. */
+    private readonly operator?: Operator,
   ) {}
 
   async build(input: InterventionInput): Promise<InterventionRequest> {
@@ -59,7 +73,7 @@ export class OperatorConsole {
       runId: this.store.runId,
       kind: input.kind,
       subject: input.subject,
-      step: input.step,
+      step: { ...input.step, targetSummary: clip(input.step.targetSummary, 200) },
       currentState: {
         url: this.surface.currentUrl(),
         title: await this.surface.page.title(),
@@ -69,7 +83,10 @@ export class OperatorConsole {
       },
       expected: redact(input.expected),
       observed: redact(input.observed),
-      reason: redact(input.reason),
+      // Reasons are composed from refusals and page text, whose length nobody
+      // bounds; an overlong one must shorten the request, not crash the run
+      // at the moment it is handing over to a person.
+      reason: clip(redact(input.reason), 400),
       reasonCode: input.reasonCode,
       ...(input.pendingChange ? { pendingChange: input.pendingChange } : {}),
       budgetsRemaining: remaining,
@@ -149,7 +166,12 @@ export class OperatorConsole {
 
     let response: OperatorResponse = "abort";
     try {
-      response = await this.ask(request.allowedResponses);
+      response = this.operator
+        ? await this.operator(request, this.surface)
+        : await this.ask(request.allowedResponses);
+      if (!request.allowedResponses.includes(response)) {
+        throw new Error(`operator answered "${response}", which this intervention does not allow`);
+      }
     } finally {
       const drained = HumanRecorder.dedupe(await recorder.drain().catch(() => []));
       this.budgets.endHumanWait();

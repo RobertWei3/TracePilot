@@ -27,7 +27,7 @@ export type TestApp = {
 export async function startApp(): Promise<TestApp> {
   const dir = mkdtempSync(path.join(tmpdir(), "tracepilot-test-"));
   process.env.DEMOBANK_DB = path.join(dir, "demobank.sqlite");
-  process.env.DEMOBANK_USER = "operator";
+  process.env.DEMOBANK_USER = "teller-7q2";
   process.env.DEMOBANK_PASS = "demo-pass-4417";
 
   // Imported after DEMOBANK_DB is set, so the app opens the test database.
@@ -86,6 +86,6 @@ export async function startApp(): Promise<TestApp> {
 }
 
 export const OPERATOR_SECRETS = {
-  "demobank.operator.user": "operator",
+  "demobank.operator.user": "teller-7q2",
   "demobank.operator.password": "demo-pass-4417",
 };

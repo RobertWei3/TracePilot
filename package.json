@@ -8,7 +8,7 @@
   },
   "scripts": {
     "tp": "tsx --env-file-if-exists=.env src/cli/tracepilot.ts",
-    "demobank": "tsx src/demobank/cli.ts",
+    "demobank": "tsx --env-file-if-exists=.env src/demobank/cli.ts",
     "test": "tsx --env-file-if-exists=.env --test --test-concurrency=4 tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

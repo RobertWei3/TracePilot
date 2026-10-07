@@ -28,14 +28,16 @@ Built in stages, each proven before the next depends on it:
 | **P1b** | The browser surface: observation, the locator ladder, and a single policy chokepoint |
 | **P2** | Deterministic replay, proven against a hand-authored capability used as an oracle |
 | **P3** | The discovery loop: one model call, one validated action |
+| **P4** | The compiler: a successful run becomes a capability that replays for any parameters |
 
 Replay was built before discovery on purpose. A hand-written artifact under
 `tests/fixtures/` is the oracle, so the executor, contracts, safety gate and
 checks were all proven before a single token was spent on a model.
 
-Still ahead: compiling a discovery trace into a capability artifact, which is
-what closes the loop between the two halves. The trace P3 records is typed for
-exactly that.
+P4 closes the loop between the two halves. A run discovered for one member
+compiles into a capability that replays for another, with no model: proven in
+both directions against DemoBank, including between a member with a second
+address line and one without.
 
 ## How it works
 
@@ -72,6 +74,27 @@ the model entirely:
 Context is rolling: each turn carries a one-line ledger and only the current
 observation, so "targets come from the current observation" is a property of the
 context rather than a rule the model has to remember.
+
+## Compilation
+
+A trace records what one run did; a capability says what any run should do.
+The compiler is the mechanical difference between the two, and a pure function
+of the trace and the task contract -- the same run always compiles to the same
+artifact.
+
+- **URLs become patterns.** `<input:member_id>` becomes `{member_id}`, expanded
+  per run. Each step gains the URL it started from as a precondition and, when
+  it moved the page, an explicit wait for where it went.
+- **What the application issued is removed.** A confirmation id appears in the
+  URL the run ended on and in the descriptor of the element it was read from.
+  Left in, the capability would address one historical confirmation. URLs are
+  cut open at it (`/confirmation/CONF-`), and locators naming it are dropped; a
+  step left with no locator sends the capability to review rather than being
+  silently guessed at.
+- **Templates stop asserting punctuation they cannot guarantee.** Where an
+  optional input sits on the page is a fact about the application, so a
+  template near one is split into pieces that hold whether it is empty or not.
+  This was found by replaying across members, not by reasoning about it.
 
 ## Safety
 
@@ -136,9 +159,24 @@ npm run tp -- discover \
   --values values/member-1002.json
 ```
 
-Options: `--policy <file>`, `--base <url>`, `--headless`, `--no-handoff` (never
-prompt; escalations end the run, for CI), and `--approved-by <who>` (authorize
-the write in advance, for unattended runs).
+Options: `--policy <file>`, `--base <url>`, `--headless`, `--slow <ms>` (pace the
+browser so a person can follow it), `--quiet` (do not print each step as it
+happens), `--no-handoff` (never prompt; escalations end the run, for CI), and
+`--approved-by <who>` (authorize the write in advance, for unattended runs).
+
+Compile a successful run, then replay it -- for any member, with no model and
+no API key:
+
+```bash
+npm run tp -- compile --run runs/discovery-... --task tasks/update-mailing-address.json
+npm run tp -- replay --capability capabilities/demobank.update_mailing_address.v1.json \
+  --values values/member-1007.json
+```
+
+`compile` writes the next free version and never overwrites one. It prints
+what it had to change, and marks the capability `needs_review` when a step
+cannot be made independent of the run it came from. `replay` takes the same
+options as `discover`.
 
 A run prints its outcome, reason code, declared outputs, budget consumption, a
 fragility score, and the evidence directory — illustrative shape:
@@ -170,26 +208,32 @@ src/contracts/      TaskContract, Capability, ExecutionResult, Policy (zod → J
 src/safety/         allowlists, effect classification, redaction, allowlist serializer
 src/browser/        the only module that touches Playwright: observe, descriptors, driver
 src/discovery/      the model loop: prompt, payload, action grammar, executor
+src/compiler/       trace -> capability: deterministic, offline, imports only contracts
 src/replay/         deterministic execution, rewind, session recovery
 src/workflow/       checks, value resolution, approval modes
 src/handoff/        operator console, control ledger, human recorder
 src/observability/  run store and budget ledger
 src/demobank/       the demo application and its operator CLI
-src/cli/            the discovery entry point
+src/cli/            discover, compile and replay
 ```
 
-Two boundaries are enforced by test rather than convention: replay may not reach
-the LLM module, and no automation module may import DemoBank.
+Three boundaries are enforced by test rather than convention: replay may not
+reach the LLM module, the compiler may import nothing but the contracts, and no
+automation module may import DemoBank.
 
 ## Testing
 
 ```bash
-npm test          # 94 tests
+npm test          # 125 tests
 npm run typecheck
 ```
 
 The suite runs against a real browser and the real application — scripted-model
-tests cover one case per stop condition and one per refusal. A live-model smoke
+tests cover one case per stop condition and one per refusal. Handoff tests stand
+a scripted person at the console who drives the same live browser with real
+input, then answer the intervention; a run containing a takeover is compiled and
+replayed for another member, so what the person did is proven replayable, not
+just recorded. A live-model smoke
 test covers the prompt itself and skips without an API key, so a model's
 judgement never gates CI.
 

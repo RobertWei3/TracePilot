@@ -82,6 +82,24 @@ test("compiler does not reach the LLM client", () => {
   assert.deepEqual(offenders, [], `compilation must be deterministic:\n${offenders.join("\n")}`);
 });
 
+test("compiler is a pure function of the contracts", () => {
+  // Determinism is the compiler's whole claim: the same trace, the same
+  // artifact. A path to the browser, the run store or the model would let the
+  // output depend on something other than its inputs.
+  const offenders: string[] = [];
+  for (const file of tsFiles(SRC)) {
+    if (moduleArea(file) !== "compiler") continue;
+    for (const spec of importsOf(file)) {
+      const local = resolveLocal(file, spec);
+      if (!local) offenders.push(`${path.relative(".", file)} -> ${spec} (external)`);
+      else if (!["compiler", "contracts"].includes(moduleArea(local))) {
+        offenders.push(`${path.relative(".", file)} -> ${spec}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `compiler may import only contracts:\n${offenders.join("\n")}`);
+});
+
 test("exactly one module reaches an LLM SDK", () => {
   // The converse of the rule above. Replay staying LLM-free is only meaningful
   // if the dependency is confined somewhere nameable, rather than spreading to
