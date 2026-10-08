@@ -24,12 +24,14 @@ function usage(): never {
   console.error(
     [
       "usage: npm run tp -- discover --task <file> --values <file> [options]",
-      "       npm run tp -- compile  --run <dir> --task <file> [--out <dir>]",
+      "       npm run tp -- compile  --run <dir> --task <file> [--outcomes <dir>,...] [--out <dir>]",
       "       npm run tp -- replay   --capability <file> --values <file> [options]",
       "",
       "  --task    <file>   task contract, e.g. tasks/update-mailing-address.json",
       "  --values  <file>   input values, e.g. values/member-1002.json",
       "  --run     <dir>    a successful discovery run, e.g. runs/discovery-...",
+      "  --outcomes <dirs>  comma-separated runs that ended in a business outcome; their",
+      "                     verified recognizers are added so replay can tell them apart",
       "  --out     <dir>    where compiled capabilities go, default capabilities/",
       "  --capability <file>  a compiled capability, e.g. capabilities/<id>.v1.json",
       "",
@@ -169,7 +171,10 @@ function compileCmd(argv: string[]): number {
   if (!runDir || !taskFile) usage();
   const outDir = flag(argv, "--out") ?? "capabilities";
 
-  const trace = DiscoveryTrace.parse(JSON.parse(readFileSync(path.join(runDir, "trace.json"), "utf8")));
+  const readTrace = (dir: string) =>
+    DiscoveryTrace.parse(JSON.parse(readFileSync(path.join(dir, "trace.json"), "utf8")));
+  const trace = readTrace(runDir);
+  const outcomes = (flag(argv, "--outcomes") ?? "").split(",").filter(Boolean).map(readTrace);
   const task = TaskContract.parse(JSON.parse(readFileSync(taskFile, "utf8")));
 
   mkdirSync(outDir, { recursive: true });
@@ -182,7 +187,7 @@ function compileCmd(argv: string[]): number {
 
   let compiled;
   try {
-    compiled = compile(trace, task, { version, createdAt: new Date().toISOString() });
+    compiled = compile(trace, task, { version, createdAt: new Date().toISOString(), outcomes });
   } catch (e) {
     if (!(e instanceof CompileError)) throw e;
     console.error(`cannot compile ${runDir}: ${e.message}`);

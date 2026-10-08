@@ -4,6 +4,8 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chooseRewind, loadCapability, replay } from "../src/replay/index.js";
+import { compile } from "../src/compiler/index.js";
+import { DiscoveryTrace, TaskContract } from "../src/contracts/index.js";
 import { startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
 
 const FIXTURE = "tests/fixtures/update_mailing_address.v1.json";
@@ -343,4 +345,28 @@ test("a run refused by the safety policy is a safety violation, not a failure", 
   assert.equal(result.reasonCode, "ROUTE_NOT_ALLOWLISTED");
   assert.equal(result.safety!.rule, "route_allowlist");
   assert.equal(result.safety!.attempted, "/_admin/scenario");
+});
+
+test("a capability compiled from discovery tells a missing member from a failure", async () => {
+  // Both runs are real: a successful one for M-1007, and one for M-9999 that
+  // ended in MEMBER_NOT_FOUND. Without the second, the compiled artifact has
+  // no recognizer and a missing member is just a step that could not run.
+  const traceOf = (f: string) => DiscoveryTrace.parse(JSON.parse(readFileSync(f, "utf8")));
+  const { capability } = compile(
+    traceOf("tests/fixtures/update_mailing_address.readback.trace.json"),
+    TaskContract.parse(JSON.parse(readFileSync("tasks/update-mailing-address.json", "utf8"))),
+    {
+      version: 1,
+      createdAt: "2026-10-08T00:00:00.000Z",
+      outcomes: [traceOf("tests/fixtures/member_not_found.trace.json")],
+    },
+  );
+
+  await app.reset();
+  const result = await run("values/member-missing.json", { capability });
+
+  assert.equal(result.outcome, "business_outcome", JSON.stringify(result.failure));
+  assert.equal(result.businessOutcome!.code, "MEMBER_NOT_FOUND");
+  assert.equal(result.budgets.modelCalls, 0);
+  assert.equal((await app.confirmations()).count, 0);
 });

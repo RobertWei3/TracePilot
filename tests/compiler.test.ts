@@ -176,3 +176,29 @@ test("a run recorded before read-back was required is not shape-equivalent, and 
   assert.equal(shape.readsBack, false);
   assert.deepEqual({ ...shape, readsBack: true }, shapeOf(oracle));
 });
+
+// --- business outcomes from other runs --------------------------------------
+
+const notFound = DiscoveryTrace.parse(
+  JSON.parse(readFileSync("tests/fixtures/member_not_found.trace.json", "utf8")),
+);
+
+test("recognizers come in from runs that met the outcome; the workflow does not", () => {
+  const { capability, notes } = compile(withReadBack, task, { ...OPTS, outcomes: [notFound] });
+  // A real deepseek-flash run for M-9999, which wrote the oracle's own check.
+  assert.deepEqual(
+    capability.businessOutcomes.map((b) => [b.code, b.when.value]),
+    [["MEMBER_NOT_FOUND", { const: "No members matched that search." }]],
+  );
+  assert.deepEqual(capability.provenance.outcomeRunIds, [notFound.runId]);
+  assert.equal(capability.steps.length, compile(withReadBack, task, OPTS).capability.steps.length);
+  assert.ok(notes.some((n) => n.includes("MEMBER_NOT_FOUND")));
+});
+
+test("an outcome run must have ended in an outcome, for the same task", () => {
+  assert.throws(() => compile(withReadBack, task, { ...OPTS, outcomes: [withReadBack] }), CompileError);
+  assert.throws(
+    () => compile(withReadBack, task, { ...OPTS, outcomes: [{ ...notFound, taskId: "other.task" }] }),
+    CompileError,
+  );
+});

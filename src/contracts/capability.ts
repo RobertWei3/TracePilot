@@ -145,6 +145,8 @@ export const Capability = z
         model: z.string(),
         authoredBy: z.object({ agent: z.number().int(), human: z.number().int() }).strict(),
         appFingerprint: z.string(),
+        /** Runs that ended in a business outcome and contributed a recognizer. */
+        outcomeRunIds: z.array(z.string()).optional(),
       })
       .strict(),
   })

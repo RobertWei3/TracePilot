@@ -1,0 +1,128 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "discovery-2026-10-08T04-01-18-699Z-0bee45",
+  "taskId": "demobank.update_mailing_address",
+  "origin": "http://localhost:4000",
+  "model": "deepseek-flash",
+  "startedAt": "2026-10-08T04:01:18.699Z",
+  "endedAt": "2026-10-08T04:01:30.012Z",
+  "outcome": "business_outcome",
+  "steps": [
+    {
+      "seq": 1,
+      "action": "fill",
+      "reason": "Enter the member ID to search for the record.",
+      "url": "http://localhost:4000/",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "Member ID or last name",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "Member ID or last name"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "member_id"
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "text-scoped",
+      "surfaceFingerprint": "sha256:76811d77ab635ef1",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-08T04:01:20.993Z"
+    },
+    {
+      "seq": 2,
+      "action": "click",
+      "reason": "Search for the member by ID.",
+      "url": "http://localhost:4000/search?q=<input:member_id>",
+      "target": {
+        "role": "button",
+        "accessibleName": "Search",
+        "nearbyText": "Member search Member ID or last name Search",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Search"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Member search Member ID or last name Search"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "button[role=button]"
+          }
+        ]
+      },
+      "effect": "reversible",
+      "checks": [],
+      "resolvedRank": 1,
+      "resolvedStrategy": "role+name",
+      "surfaceFingerprint": "sha256:7cfa301718506cb1",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-08T04:01:22.865Z"
+    },
+    {
+      "seq": 3,
+      "action": "assert",
+      "reason": "Assert the page shows no members matched, the application's own refusal text.",
+      "url": "http://localhost:4000/search?q=<input:member_id>",
+      "effect": "reversible",
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "const": "No members matched that search."
+          },
+          "describes": "Assert the page shows no members matched, the application's own refusal text."
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "at": "2026-10-08T04:01:27.917Z"
+    }
+  ],
+  "businessOutcomes": [
+    {
+      "code": "MEMBER_NOT_FOUND",
+      "when": {
+        "kind": "text_contains",
+        "value": {
+          "const": "No members matched that search."
+        },
+        "describes": "Search found no members for the given member ID."
+      }
+    }
+  ],
+  "outputs": {},
+  "authoredBy": {
+    "agent": 3,
+    "human": 0
+  },
+  "appFingerprint": "sha256:243df5cb7f064305"
+}

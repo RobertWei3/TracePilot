@@ -32,6 +32,14 @@ import {
 export type CompileOptions = {
   version: number;
   createdAt: string;
+  /**
+   * Runs of the same task that ended in a business outcome -- the application
+   * correctly saying no. A successful run never meets "no such member", so
+   * the recognizers that let replay tell that apart from a failure have to
+   * come from runs that did. Only their recognizers are taken; the workflow
+   * comes from the successful run alone.
+   */
+  outcomes?: DiscoveryTrace[];
   /** Where replay signs in. Discovery uses the same path. */
   loginUrl?: string;
 };
@@ -194,19 +202,54 @@ export function compile(trace: DiscoveryTrace, task: TaskContract, o: CompileOpt
     inputs: task.inputs,
     outputs,
     steps,
-    businessOutcomes: trace.businessOutcomes.map((b) => ({
-      code: b.code,
-      when: scrubCheck(b.when, issued, `business outcome ${b.code}`, notes),
-    })),
+    businessOutcomes: recognizers(trace, task, o.outcomes ?? [], issued, notes),
     expectedDialogs: [],
     provenance: {
       runId: trace.runId,
       model: trace.model,
       authoredBy: trace.authoredBy,
       appFingerprint: trace.appFingerprint,
+      ...(o.outcomes?.length ? { outcomeRunIds: o.outcomes.map((t) => t.runId) } : {}),
     },
   });
   return { capability, notes };
+}
+
+/**
+ * Business-outcome recognizers from the successful run and from any outcome
+ * runs, one per code. Each was checked against the live page that produced it
+ * before discovery accepted it, which is what makes it safe to carry over.
+ */
+function recognizers(
+  trace: DiscoveryTrace,
+  task: TaskContract,
+  outcomes: DiscoveryTrace[],
+  issued: string[],
+  notes: string[],
+): Capability["businessOutcomes"] {
+  for (const t of outcomes) {
+    if (t.taskId !== task.taskId) {
+      throw new CompileError(`outcome run ${t.runId} is for ${t.taskId}, not ${task.taskId}`);
+    }
+    if (t.outcome !== "business_outcome" || t.businessOutcomes.length === 0) {
+      throw new CompileError(
+        `outcome run ${t.runId} ended in ${t.outcome}; only a run that ended in a business outcome carries a recognizer`,
+      );
+    }
+  }
+  const out: Capability["businessOutcomes"] = [];
+  for (const t of [trace, ...outcomes]) {
+    const theirs = [...issued, ...Object.values(t.outputs).filter((v) => v.length > 0)];
+    for (const b of t.businessOutcomes) {
+      if (out.some((x) => x.code === b.code)) {
+        notes.push(`${t.runId}: kept the first recognizer for ${b.code}, dropped a second`);
+        continue;
+      }
+      out.push({ code: b.code, when: scrubCheck(b.when, theirs, `business outcome ${b.code}`, notes) });
+      if (t !== trace) notes.push(`recognizer ${b.code} taken from ${t.runId}`);
+    }
+  }
+  return out;
 }
 
 /** Dotted names of every input the task declares optional, at any depth. */
