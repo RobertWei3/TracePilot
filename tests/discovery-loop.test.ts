@@ -6,9 +6,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createServer, type AddressInfo } from "node:net";
 import path from "node:path";
-import { startApp, OPERATOR_SECRETS } from "./helpers/app.js";
+import { freePort, startApp, OPERATOR_SECRETS } from "./helpers/app.js";
 import { ScriptedModel, FailingModel, pick } from "./helpers/scripted.js";
 import { PRE_APPROVED, readBack, runDiscovery, task, throughSubmit, toReview } from "./helpers/discovery.js";
 import { compile } from "../src/compiler/index.js";
@@ -463,11 +462,7 @@ test("an unreachable model is not charged to the decision budget", async (t) => 
 test("an unreachable application is a load failure, not a crash", async (t) => {
   const app = await startApp();
   t.after(() => app.stop());
-  // Take a free port and release it, so nothing is listening there.
-  const probe = createServer();
-  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as AddressInfo;
-  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const port = await freePort();
   const deadUrl = `http://127.0.0.1:${port}`;
 
   const model = new ScriptedModel([]);

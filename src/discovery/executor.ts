@@ -1086,7 +1086,6 @@ export class DiscoveryExecutor {
     this.o.store.event({
       type: "discovery_crashed",
       actor: "SYSTEM",
-      reasonCode: "INTERNAL_ERROR",
       observed: name,
     });
     return this.finish(

@@ -43,7 +43,7 @@ function loadErrorCategory(e: unknown): string {
   return e.message.match(/net::ERR_[A-Z_]+/)?.[0] ?? e.name;
 }
 
-export type DialogRecord ={ message: string; type: string; declared: boolean; at: string };
+export type DialogRecord = { message: string; type: string; declared: boolean; at: string };
 
 export type ActResult =
   | { ok: true; rank: number; strategy: string; tried: Attempt[] }

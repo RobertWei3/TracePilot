@@ -42,6 +42,9 @@ export type ReplayOptions = {
 
 type Recovery = ExecutionResult["recoveries"][number];
 
+/** Stands in for a step id where something happened before any step, or outside one. */
+const RUN_LEVEL = "(run)";
+
 class Terminal extends Error {
   constructor(
     readonly outcome: NonNullable<ExecutionResult["outcome"]>,
@@ -123,9 +126,8 @@ export class ReplayExecutor {
         // An unreachable application surfaces here first, before any step, and
         // gets the same bounded reload as a load inside a step.
         const ok = await this.withLoadRecovery(
-          undefined,
           () => surface.ensureSession(this.absolute(session.loginUrl), session.credentialRef),
-          "the login page to load",
+          { expected: "the login page to load" },
         );
         store.event({ type: "session_established", actor: "AGENT", outcome: ok ? "ok" : "failed" });
         if (!ok) {
@@ -255,7 +257,7 @@ export class ReplayExecutor {
 
     if (step.action === "navigate" || step.action === "read_back") {
       const url = this.absolute(this.resolveUrl(step.value));
-      const res = await this.withLoadRecovery(step, () => surface.navigate(url));
+      const res = await this.withLoadRecovery(() => surface.navigate(url), { step });
       this.lastPath = new URL(url).pathname + new URL(url).search;
       if (res.status !== null && res.status >= 400) {
         if (res.status === 403) {
@@ -636,9 +638,8 @@ export class ReplayExecutor {
    * recovery is then recorded against the run as a whole.
    */
   private async withLoadRecovery<T>(
-    step: Step | undefined,
     load: () => Promise<T>,
-    expected = "the page to load",
+    { step, expected = "the page to load" }: { step?: Step; expected?: string } = {},
   ): Promise<T> {
     let recovery: Recovery | undefined;
     for (;;) {
@@ -652,7 +653,7 @@ export class ReplayExecutor {
           throw new Terminal("failure", "LOAD_FAILED", { step, expected, observed: e.category });
         }
         this.usedRecovery.reload += 1;
-        recovery = { stepId: step?.stepId ?? "(run)", kind: "reload", attempts: 1, succeeded: false };
+        recovery = { stepId: step?.stepId ?? RUN_LEVEL, kind: "reload", attempts: 1, succeeded: false };
         this.recoveries.push(recovery);
         this.o.store.event({ type: "recovery", actor: "AGENT", stepId: step?.stepId, reason: "reload" });
       }
@@ -871,7 +872,6 @@ export class ReplayExecutor {
     this.o.store.event({
       type: "replay_crashed",
       actor: "SYSTEM",
-      reasonCode: "INTERNAL_ERROR",
       observed: name,
     });
     return this.finish("failure", "INTERNAL_ERROR", {
@@ -1030,7 +1030,7 @@ export class ReplayExecutor {
       ...(outcome === "failure" && !detail.step
         ? {
             failure: {
-              stepId: "(run)",
+              stepId: RUN_LEVEL,
               stepIndex: -1,
               expected: redact(detail.expected ?? ""),
               observed: redact(detail.observed ?? ""),

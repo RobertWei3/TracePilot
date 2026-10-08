@@ -1,13 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
-import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chooseRewind, loadCapability, replay } from "../src/replay/index.js";
 import { compile } from "../src/compiler/index.js";
 import { DiscoveryTrace, TaskContract } from "../src/contracts/index.js";
-import { startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
+import { freePort, startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
 
 const FIXTURE = "tests/fixtures/update_mailing_address.v1.json";
 
@@ -349,11 +348,7 @@ test("a run refused by the safety policy is a safety violation, not a failure", 
 });
 
 test("an unreachable application is a load failure, not a crash", async () => {
-  // Take a free port and release it, so nothing is listening there.
-  const probe = createServer();
-  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as AddressInfo;
-  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const port = await freePort();
   const deadUrl = `http://127.0.0.1:${port}`;
 
   const ownRoot = mkdtempSync(path.join(tmpdir(), "tracepilot-runs-"));
