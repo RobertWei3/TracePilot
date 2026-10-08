@@ -38,6 +38,31 @@ export type Handled = {
   recorded: RecordedAction[];
 };
 
+/**
+ * The copy of a request that goes to disk. The console shows a person the
+ * real values -- an approval is meaningless without them -- but the record
+ * keeps references: redaction tags the inputs, and what it cannot know about
+ * is left out. A field's current value is the subject's existing data, and
+ * the visible text is the whole page; the masked screenshot covers that.
+ */
+function persisted(request: InterventionRequest): InterventionRequest {
+  return {
+    ...request,
+    currentState: { ...request.currentState, visibleSummary: "(not persisted; see screenshotRef)" },
+    ...(request.pendingChange
+      ? {
+          pendingChange: {
+            ...request.pendingChange,
+            fields: request.pendingChange.fields.map((f) => ({
+              ...f,
+              from: f.from === "(empty)" || f.from === "" ? f.from : "(current value)",
+            })),
+          },
+        }
+      : {}),
+  };
+}
+
 function clip(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
@@ -63,7 +88,9 @@ export class OperatorConsole {
 
   async build(input: InterventionInput): Promise<InterventionRequest> {
     const shot = await this.surface.screenshot();
-    const saved = this.store.screenshot(`iv-${input.step.stepId}-${Date.now()}`, shot);
+    // Base 36: a 13-digit millisecond stamp is shaped like a card number, and
+    // redaction rewrote the persisted reference to a file that did not exist.
+    const saved = this.store.screenshot(`iv-${input.step.stepId}-${Date.now().toString(36)}`, shot);
     const visible = await this.surface.visibleText();
     const remaining = this.budgets.remaining();
 
@@ -138,7 +165,7 @@ export class OperatorConsole {
    */
   async handle(input: InterventionInput): Promise<Handled> {
     const request = await this.build(input);
-    this.store.document(`intervention-${request.interventionId}.json`, request);
+    this.store.document(`intervention-${request.interventionId}.json`, persisted(request));
     this.store.event({
       type: "intervention_raised",
       actor: "SYSTEM",

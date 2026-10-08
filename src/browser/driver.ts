@@ -2,7 +2,7 @@ import { chromium, type BrowserContext, type Dialog, type Page } from "playwrigh
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Descriptor, Policy } from "../contracts/index.js";
-import { SafetyViolation, checkAction, checkUrl, registerSecret } from "../safety/index.js";
+import { SafetyViolation, checkAction, checkUrl, registerInputs, registerSecret } from "../safety/index.js";
 import {
   MIN_TAGGED_VALUE_LENGTH,
   buildObservation,
@@ -63,6 +63,8 @@ export class Surface {
     const page = context.pages()[0] ?? (await context.newPage());
 
     for (const [label, value] of Object.entries(opts.secrets ?? {})) registerSecret(label, value);
+    // From here on, anything a writer persists has this run's values tagged.
+    registerInputs(opts.inputs ?? {});
 
     const surface = new Surface(context, page, policy, opts.inputs ?? {}, opts.secrets ?? {});
 
@@ -166,6 +168,30 @@ export class Surface {
    * them, so they are stripped once the image exists rather than left on the
    * page for the rest of the run.
    */
+  /**
+   * Marks every element that shows a credential or an input value, so the
+   * mask covers it. The text records tag these values wherever they appear;
+   * the image has to agree, or a screenshot shows the operator's username and
+   * the subject's new address in the run that told the reader they were gone.
+   * The threshold is the text channel's, for the same reason.
+   */
+  private async markShownValues(): Promise<void> {
+    const values = [...Object.values(this.secrets), ...Object.values(this.inputs)].filter(
+      (v) => v && v.length >= MIN_TAGGED_VALUE_LENGTH,
+    );
+    if (values.length === 0) return;
+    await this.page.evaluate((vals: string[]) => {
+      const shows = (t: string | null | undefined) => !!t && vals.some((v) => t.includes(v));
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (shows(n.nodeValue) && n.parentElement) n.parentElement.setAttribute("data-tp-redacted", "");
+      }
+      for (const el of Array.from(document.querySelectorAll("input, textarea"))) {
+        if (shows((el as HTMLInputElement).value)) el.setAttribute("data-tp-redacted", "");
+      }
+    }, values);
+  }
+
   private async clearRedactionMarks(): Promise<void> {
     await this.page
       .evaluate(() => {
@@ -259,6 +285,7 @@ export class Surface {
       // image would be worse than not redacting at all, because the claim is
       // what a reader relies on. The observation builder marks what it hid; the
       // mask list picks those up alongside the statically configured selectors.
+      await this.markShownValues();
       const selectors = [...this.policy.maskSelectors, "[data-tp-redacted]"];
       const masks = selectors.map((s) => this.page.locator(s));
       // A sensitive control that no mask covers means capture is not safe.

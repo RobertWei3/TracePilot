@@ -7,7 +7,7 @@
 // spec is explicit that approving a write does not count as taking over.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright";
 import { startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
@@ -391,4 +391,47 @@ test("an overlong refusal shortens the intervention instead of crashing the hand
 
   assert.equal(result.outcome, "aborted", JSON.stringify(result.failure));
   assert.equal(result.reasonCode, "DEAD_END");
+});
+
+/** Every text file a run wrote, as one string, with digests masked. */
+function runText(dir: string): string {
+  const walk = (d: string): string[] =>
+    readdirSync(d).flatMap((f) => {
+      const p = path.join(d, f);
+      return statSync(p).isDirectory() ? walk(p) : p.endsWith(".jpg") ? [] : [p];
+    });
+  return walk(dir)
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n")
+    .replace(/sha256:[0-9a-f]+/g, "sha256:*");
+}
+
+test("nothing a run writes to disk carries the subject's values, through approval and hand-over", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // An evidence scan found member ids in replay events' URLs, and the raw
+  // approval diff and page text in persisted intervention requests. The
+  // console may show a person real values; the record may not.
+  let approvals = 0;
+  const result = await runReplay(app, withBrokenReview(), async (request, surface) => {
+    if (request.kind === "approval_required") {
+      approvals += 1;
+      return "resume";
+    }
+    await surface.page.getByRole("button", { name: "Review changes" }).click();
+    await surface.page.waitForURL(/\/review$/);
+    return "step_done";
+  });
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure ?? result));
+
+  const written = runText(result.evidenceDir);
+  const values = ["M-1002", ...Object.values(M1002.address).filter((v) => v.length >= 3)];
+  // The member's address before the change, from the seed data. ("Ashford"
+  // alone would match the bank's own name, Ashford Mutual, in every title.)
+  const before = ["418 Larkspur Way", "Ashford, OR", "97213"];
+  for (const v of [...values, ...before]) {
+    assert.equal(written.includes(v), false, `the run's record contains "${v}"`);
+  }
+  assert.match(written, /<input:member_id>/, "values should appear as references");
 });

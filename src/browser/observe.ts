@@ -1,3 +1,4 @@
+import { INPUT_TAG_MIN_LENGTH } from "../safety/index.js";
 /**
  * The in-page observation builder. This function is serialized and evaluated
  * inside the page, so it must not close over anything outside its argument.
@@ -31,7 +32,7 @@
  * to redact, which is not a leak being caught -- it is the two halves of the
  * boundary disagreeing about what the contract is.
  */
-export const MIN_TAGGED_VALUE_LENGTH = 3;
+export const MIN_TAGGED_VALUE_LENGTH = INPUT_TAG_MIN_LENGTH;
 
 /**
  * The Node-side mirror of the in-page tagger.
