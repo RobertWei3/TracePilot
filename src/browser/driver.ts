@@ -25,7 +25,25 @@ export type SurfaceOptions = {
 /** Mask fill. Exported so a test can assert on pixels rather than on intent. */
 export const MASK_COLOR = "#222222";
 
-export type DialogRecord = { message: string; type: string; declared: boolean; at: string };
+/**
+ * A page load that did not complete: the application was unreachable, or the
+ * load timed out. Carries only a category such as `net::ERR_CONNECTION_REFUSED`
+ * or `TimeoutError` -- never the browser's message, which names the URL and so
+ * may carry query parameters.
+ */
+export class LoadError extends Error {
+  constructor(readonly category: string) {
+    super(category);
+    this.name = "LoadError";
+  }
+}
+
+function loadErrorCategory(e: unknown): string {
+  if (!(e instanceof Error)) return "unknown load error";
+  return e.message.match(/net::ERR_[A-Z_]+/)?.[0] ?? e.name;
+}
+
+export type DialogRecord ={ message: string; type: string; declared: boolean; at: string };
 
 export type ActResult =
   | { ok: true; rank: number; strategy: string; tried: Attempt[] }
@@ -129,10 +147,15 @@ export class Surface {
   async navigate(url: string): Promise<{ status: number | null }> {
     this.gateAction("navigate");
     this.gateUrl(url);
-    const res = await this.page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: this.policy.budgets.stepTimeoutMs,
-    });
+    let res: Awaited<ReturnType<Page["goto"]>>;
+    try {
+      res = await this.page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: this.policy.budgets.stepTimeoutMs,
+      });
+    } catch (e) {
+      throw new LoadError(loadErrorCategory(e));
+    }
     // A redirect off-policy is refused after the fact rather than followed.
     this.gateUrl(this.page.url());
     return { status: res?.status() ?? null };
