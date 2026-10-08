@@ -195,7 +195,7 @@ export class DiscoveryExecutor {
       if (session) {
         const ok = await this.withLoadRecovery(
           () => surface.ensureSession(this.absolute("/login"), session.credentialRef),
-          "the login page to load",
+          { expected: "the login page to load" },
         );
         store.event({ type: "session_established", actor: "AGENT", outcome: ok ? "ok" : "failed" });
         if (!ok) {
@@ -208,7 +208,7 @@ export class DiscoveryExecutor {
 
       await this.withLoadRecovery(
         () => surface.navigate(this.absolute(new URL(task.targetUrl).pathname)),
-        "the start page to load",
+        { expected: "the start page to load" },
       );
       await this.reobserve();
     } catch (e) {
@@ -890,7 +890,10 @@ export class DiscoveryExecutor {
    * Setup loads get the same bounded reload as replay, so an unreachable
    * application is reported as such rather than as a stuck run.
    */
-  private async withLoadRecovery<T>(load: () => Promise<T>, expected: string): Promise<T> {
+  private async withLoadRecovery<T>(
+    load: () => Promise<T>,
+    { expected = "the page to load" }: { expected?: string } = {},
+  ): Promise<T> {
     for (;;) {
       try {
         return await load();
