@@ -244,6 +244,12 @@ just recorded. A live-model smoke
 test covers the prompt itself and skips without an API key, so a model's
 judgement never gates CI.
 
+## Report
+
+[`REPORT.md`](REPORT.md) covers the architecture, the artifact schema,
+determinism and error handling, heterogeneity and multi-tenancy, escalation and
+handoff, safety, and what V1 deliberately cuts.
+
 ## Evidence
 
 [`evidence/`](evidence/) holds real discovery and replay runs. It includes
