@@ -1,262 +1,251 @@
 # TracePilot
 
-A browser agent that is allowed to discover a workflow once, and never again.
+**TracePilot uses an AI model to discover a browser workflow once, then replays it with no model at all.**
 
-Most web agents re-decide everything on every run: the same page is re-read, the
-same reasoning is re-done, and the same task can fail differently each time.
-TracePilot separates the two things that were conflated. **Discovery** is a
-model-driven exploration of an unfamiliar application, run once, under a budget,
-with a human at the approval gate. What it produces is a **capability** — a
-declarative artifact describing the workflow it found. **Replay** executes that
-artifact deterministically, with no model in the loop at all: no API key, no
-tokens, no non-determinism, and a failure that names the step, the expected
-state and the observed state rather than a transcript to read.
+Most browser agents re-read the page and reason it out again on every run, so a
+task can fail differently each time. TracePilot splits the job into two halves:
 
-The design premise is that everything between a decision and the page should be
-mechanical. The model chooses one action at a time; the system decides whether
-that action is allowed, resolves what it targets, substitutes the values, checks
-the result, and writes the record.
+- **Discover.** A model explores an unfamiliar web app *once*, within a budget. A
+  person approves any change it makes.
+- **Replay.** The result is compiled into a reviewable JSON **capability**, which
+  runs again for any inputs. Replay needs no model, no API key and no tokens, and
+  it takes the same steps every time.
 
-## Status
-
-Built in stages, each proven before the next depends on it:
-
-| Stage | What it establishes |
-| --- | --- |
-| **P0** | Node 24 + TypeScript layout, Playwright, and import-boundary tests that make two spec rules executable |
-| **P1a** | Contracts (zod + JSON Schema), the safety layer, and DemoBank — the deliberately unhelpful demo application |
-| **P1b** | The browser surface: observation, the locator ladder, and a single policy chokepoint |
-| **P2** | Deterministic replay, proven against a hand-authored capability used as an oracle |
-| **P3** | The discovery loop: one model call, one validated action |
-| **P4** | The compiler: a successful run becomes a capability that replays for any parameters |
-
-Replay was built before discovery on purpose. A hand-written artifact under
-`tests/fixtures/` is the oracle, so the executor, contracts, safety gate and
-checks were all proven before a single token was spent on a model.
-
-P4 closes the loop between the two halves. A run discovered for one member
-compiles into a capability that replays for another, with no model: proven in
-both directions against DemoBank, including between a member with a second
-address line and one without.
-
-## How it works
+When a replay fails, it names the step, what it expected and what it found. It
+can also hand the live browser to a person, who finishes the step and hands it
+back.
 
 ```
-observe → sanitized payload → propose → validate → enforce → execute → record → observe
+discover (model, once) ─► trace ─► compile ─► capability.json ─► replay (no model, any inputs)
 ```
 
-Each turn the loop takes one observation of the page, renders it into the single
-model-bound payload format, asks for exactly one action, and then stops trusting
-the model entirely:
+The repository includes **DemoBank**, a deliberately awkward member-service app
+to run TracePilot against. The [`evidence/`](evidence/) folder holds real runs,
+and [`REPORT.md`](REPORT.md) explains the design.
 
-- **Targets are observation-scoped.** An element id refers to the observation
-  that produced it. A reference carried over from an earlier turn is rejected
-  rather than silently addressing a different control.
-- **Values are never literals.** A `fill` names a declared input; the executor
-  resolves it in memory. An input value cannot appear in a prompt or a response
-  at all.
-- **The grammar is narrowed by policy.** The action enum handed to the model is
-  the intersection of what the system can express and what policy permits, so a
-  withheld action is unrepresentable rather than merely refused — and the loop
-  re-checks before executing anyway.
-- **Writes are gated from the page, not the proposal.** An observed element
-  carries its enclosing form's submit target, so effect classification reads the
-  page. An unapproved consequential click is refused whether or not the model
-  remembered to ask for approval.
-- **Claims are verified before they are believed.** An assertion that does not
-  hold on the page that authored it is refused. So is a business-outcome
-  recognizer that does not match — relabelling its own failure as "the
-  application said no" is the most attractive exit a stuck agent has.
-- **Being stuck is reported, not ground out.** A rejected proposal costs one
-  model call and is fed back. N rejections in a row report `DEAD_END` rather
-  than burning the budget into refusals and calling it exhaustion.
-
-Context is rolling: each turn carries a one-line ledger and only the current
-observation, so "targets come from the current observation" is a property of the
-context rather than a rule the model has to remember.
-
-## Compilation
-
-A trace records what one run did; a capability says what any run should do.
-The compiler is the mechanical difference between the two, and a pure function
-of the trace and the task contract -- the same run always compiles to the same
-artifact.
-
-- **URLs become patterns.** `<input:member_id>` becomes `{member_id}`, expanded
-  per run. Each step gains the URL it started from as a precondition and, when
-  it moved the page, an explicit wait for where it went.
-- **What the application issued is removed.** A confirmation id appears in the
-  URL the run ended on and in the descriptor of the element it was read from.
-  Left in, the capability would address one historical confirmation. URLs are
-  cut open at it (`/confirmation/CONF-`), and locators naming it are dropped; a
-  step left with no locator sends the capability to review rather than being
-  silently guessed at.
-- **Templates stop asserting punctuation they cannot guarantee.** Where an
-  optional input sits on the page is a fact about the application, so a
-  template near one is split into pieces that hold whether it is empty or not.
-  This was found by replaying across members, not by reasoning about it.
-- **The result is held to the oracle's shape.** A compiled live run must match
-  the hand-authored capability in phases, outputs bound, a single gated write,
-  the inputs written and a read-back after it -- with a comparable step count.
-  Shape, not equality: the model's own detours are allowed.
-
-## Safety
-
-Safety is structural rather than advisory — the guarantees hold because the code
-cannot express the alternative.
-
-- **One chokepoint.** The surface layer is the only thing that touches a
-  browser, so a single policy check covers discovery and replay both. Origins,
-  routes and actions are allowlisted in `policy.json`.
-- **Input values never reach a prompt.** The in-page observation builder
-  replaces any text matching a resolved input with `<input:name>` before the
-  observation leaves the browser. This turned out to be more than redaction:
-  descriptors carry the tags, so substituting current values back at resolve
-  time makes a descriptor *parameterized* — one captured for `M-1002` retargets
-  to `M-1007` without recompilation.
-- **Records are built from an allowlist.** Every persisted event is rebuilt from
-  an explicit field specification, so a field added upstream is dropped rather
-  than inspected. Raw model payloads have no specification at all: they live in
-  memory for the run and are never written.
-- **Screenshots are masked in-process**, and refused outright when a mask cannot
-  cover a sensitive field.
-- **Undeclared dialogs are recorded and dismissed, never accepted.**
-- **Credentials are resolved in the browser layer only**, registered for
-  redaction before use, and never sent to the model.
-
-## DemoBank
-
-The target application ships with the repo, because an agent that only works
-against a cooperative page proves nothing. DemoBank is a Fastify + EJS +
-`node:sqlite` member-service app with six synthetic members and a deliberately
-unhelpful DOM: no test IDs, duplicated "View" links, near-identical buttons, and
-two similarly-named Danas.
-
-Failure scenarios are toggled through `/_admin`, which the policy deliberately
-does not allowlist — so the automation is structurally incapable of changing its
-own test conditions. Available scenarios: session expiry (by TTL or on a chosen
-request), slow search, forced 403, and an undeclared native dialog on submit.
+---
 
 ## Quickstart
 
-Requires Node 24+.
+TracePilot requires **Node 24+**.
 
 ```bash
 npm install
 npx playwright install chromium
-cp .env.example .env      # add DEEPSEEK_API_KEY (or ANTHROPIC_API_KEY) for discovery only
+cp .env.example .env        # then add DEEPSEEK_API_KEY (needed for discovery only)
 ```
 
-Run the application:
+**1. Start the demo app.** Keep this terminal open.
 
 ```bash
-npm run demobank -- serve            # http://localhost:4000
-npm run demobank -- reset            # restore the database
-npm run demobank -- scenario set force_403=true
+npm run demobank -- serve   # http://localhost:4000
 ```
 
-Run discovery against it:
+**2. Discover the workflow.** A browser window opens, and the model works through
+the task. Before the model submits, the terminal shows exactly what will change.
+Type `resume` to approve it or `abort` to stop.
 
 ```bash
-npm run tp -- discover \
-  --task tasks/update-mailing-address.json \
-  --values values/member-1002.json
+npm run demobank -- reset
+npm run tp -- discover --task tasks/update-mailing-address.json --values values/member-1002.json
 ```
 
-Options: `--policy <file>`, `--base <url>`, `--headless`, `--slow <ms>` (pace the
-browser so a person can follow it), `--quiet` (do not print each step as it
-happens), `--no-handoff` (never prompt; escalations end the run, for CI), and
-`--approved-by <who>` (authorize the write in advance, for unattended runs).
-
-Compile a successful run, then replay it -- for any member, with no model and
-no API key:
+**3. Compile the run into a capability.** Use the run folder printed on the last
+line of step 2.
 
 ```bash
-npm run tp -- compile --run runs/discovery-... --task tasks/update-mailing-address.json
+npm run tp -- compile --run runs/discovery-<id> --task tasks/update-mailing-address.json
+```
+
+**4. Replay the capability for a different member.** No model is used.
+
+```bash
+npm run demobank -- reset
 npm run tp -- replay --capability capabilities/demobank.update_mailing_address.v1.json \
   --values values/member-1007.json
 ```
 
-Pass `--outcomes <run>,...` to add the recognizers from runs that ended in a
-business outcome (the application correctly saying no), so replay can tell
-those from failures. `compile` writes the next free version and never
-overwrites one. It prints
-what it had to change, and marks the capability `needs_review` when a step
-cannot be made independent of the run it came from. `replay` takes the same
-options as `discover`.
-
-A run prints its outcome, reason code, declared outputs, budget consumption, a
-fragility score, and the evidence directory — illustrative shape:
+Every run ends with a summary like this:
 
 ```
-success [OK]  run discovery-...
-outputs   : {"confirmation_id":"CONF-8KD24QW1"}
-budgets   : 11 steps | 14 observations | 12 model calls
-fragility : 0 step(s) below rank 1 (0.00)
-evidence  : runs/discovery-...
+success [OK]  run replay-2026-10-08T04-23-14-098Z
+outputs   : {"confirmation_id":"CONF-BTYV8GQT"}
+budgets   : 18 steps | 0 observations | 0 model calls
+evidence  : runs/replay-2026-10-08T04-23-14-098Z
 ```
 
-## Outcomes
+> Run these commands in your own terminal, not through a tool that captures their
+> output. The approval and hand-over prompts need you to type an answer.
 
-A run ends in exactly one of five outcomes, with a typed reason code. The
-distinction that matters most: **`business_outcome` is not failure.** If the
-application correctly refuses — a validation rejection, a locked record — that
-is a successful automation of a "no", and it is reported with the check that
-recognized it. `failure` means the automation broke; `safety_violation` means it
-was stopped by policy; `aborted` means a person stopped it.
+## Watching a run, and taking over
 
-Lifecycle is independent of outcome: an escalation ends the executor with
-`awaiting_human` and no terminal outcome, which does not mark the run finished.
+The browser is visible by default. Add `--slow 1000` to pause before each browser
+action, so you can follow along. The terminal prints one line per step as it
+happens.
 
-## Layout
+When a run needs a person, it pauses and prints an **intervention**:
+
+- the step it was on;
+- the current page;
+- what it expected to find;
+- what it actually found;
+- a screenshot.
+
+The browser stays live, so you can operate it yourself and then answer in the
+terminal:
+
+| Answer | Meaning |
+| --- | --- |
+| `resume` / `retry` | Run the step again from where you left the page. |
+| `step_done` | You did this step yourself. Continue with the next one. |
+| `complete` | You finished the whole workflow. Verify it and collect the outputs. |
+| `abort` | Stop the run. |
+
+Wait for the prompt before you touch the browser. Actions you take while the
+automation is in control are not recorded as yours.
+
+TracePilot does not take your word for it. After you hand back, it checks that
+the page is where the next step expects. A run you `complete` must still show
+its outputs on the page.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run tp -- discover --task <file> --values <file>` | Explores the app with the model and writes a run folder under `runs/`. |
+| `npm run tp -- compile --run <dir> --task <file>` | Turns a successful run into `capabilities/<id>.v<N>.json`. It never overwrites an earlier version. |
+| `npm run tp -- replay --capability <file> --values <file>` | Runs a capability with new inputs, using no model. |
+
+Options for `discover` and `replay`:
+
+| Option | Effect |
+| --- | --- |
+| `--slow <ms>` | Pause before each browser action. |
+| `--headless` | Hide the browser window. |
+| `--approved-by <name>` | Approve the run's one write in advance, for unattended runs. |
+| `--no-handoff` | Never prompt. A run that needs a person stops instead. Use this for CI. |
+| `--quiet` | Don't print each step. |
+| `--base <url>` | Run against another origin. The default is `http://localhost:4000`. |
+| `--policy <file>` | Use a different safety policy. The default is `policy.json`. |
+
+Options for `compile`:
+
+| Option | Effect |
+| --- | --- |
+| `--outcomes <run>,...` | Also learn from runs that ended in a business outcome (see below), so replay can recognize those outcomes. |
+| `--out <dir>` | Write the capability somewhere other than `capabilities/`. |
+
+## How a run can end
+
+| Outcome | Meaning |
+| --- | --- |
+| `success` | The workflow completed, and its result was verified. |
+| `business_outcome` | The app correctly said no, for example "No members matched that search." This is **not** a failure. |
+| `failure` | The automation could not complete. The report names the step, the expected state and the observed state. |
+| `safety_violation` | The safety policy stopped the run, for example because a route is not allowed. |
+| `aborted` | A person stopped the run, or a budget ran out. |
+
+Each run's full record is in `runs/<id>/`:
+
+- `events.jsonl` holds every step and decision.
+- `result.json` holds the outcome.
+- `trace.json` records what discovery did, for the compiler.
+- `screenshots/` holds masked screenshots.
+
+## Safety at a glance
+
+- **The browser is allowlisted.** It can reach only the origins, routes and
+  actions listed in `policy.json`. One chokepoint enforces this for both
+  discovery and replay.
+- **Every write needs approval.** A person approves it, or `--approved-by`
+  approves it in advance. In discovery, a pre-approval covers exactly one write.
+  Replay refuses any write that has no recorded approval.
+- **Your data never reaches the model.** Input values are replaced with
+  `<input:name>` inside the page, before anything is sent.
+- **Logs and screenshots hold references, not values.** Credentials and inputs
+  are redacted from every saved file and masked in screenshots.
+
+For details, see the Safety section of [`REPORT.md`](REPORT.md).
+
+## Configuration
+
+Settings live in `.env`, which you copy from `.env.example`:
+
+| Variable | Purpose |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | Model key for discovery. Set `ANTHROPIC_API_KEY` instead to use Claude. If both are set, DeepSeek is used. |
+| `TRACEPILOT_MODEL` | Model override. If empty, the default is `deepseek-flash` (DeepSeek) or `claude-sonnet-5-5` (Anthropic). |
+| `TRACEPILOT_EFFORT` | Reasoning effort, from `low` to `max`. Use `low` with `deepseek-flash`. |
+| `DEMOBANK_USER` / `DEMOBANK_PASS` | DemoBank login. These are never sent to the model or written to any record. |
+
+Replay, compile and the demo app need **no API key** and run fully offline.
+
+## DemoBank
+
+DemoBank is a small member-service app with six synthetic members, built with
+Fastify, EJS and SQLite. It is deliberately awkward to automate:
+
+- there are no test IDs;
+- the "View" links are duplicated;
+- buttons look nearly identical;
+- two members are both named Dana.
+
+An agent that only works on tidy pages proves nothing.
+
+```bash
+npm run demobank -- reset                          # restore data and clear scenarios
+npm run demobank -- scenario set force_403=true    # turn on a failure scenario
+npm run demobank -- scenario get                   # show the current scenarios
+```
+
+| Scenario | Effect |
+| --- | --- |
+| `expire_at_request=<n>` | The session expires once, on the n-th request. |
+| `session_ttl=<seconds>` | Sessions are short and expire repeatedly. |
+| `slow_search=true` | Search results load slowly. |
+| `force_403=true` | The edit page refuses the operator's role. |
+| `extra_dialog=true` | An unexpected confirmation dialog appears on submit. |
+
+The automation cannot change these scenarios itself, because the admin routes
+are deliberately outside its allowlist.
+
+## Project layout
 
 ```
-src/contracts/      TaskContract, Capability, ExecutionResult, Policy (zod → JSON Schema)
-src/safety/         allowlists, effect classification, redaction, allowlist serializer
-src/browser/        the only module that touches Playwright: observe, descriptors, driver
-src/discovery/      the model loop: prompt, payload, action grammar, executor
-src/compiler/       trace -> capability: deterministic, offline, imports only contracts
-src/replay/         deterministic execution, rewind, session recovery
-src/workflow/       checks, value resolution, approval modes
-src/handoff/        operator console, control ledger, human recorder
-src/observability/  run store and budget ledger
-src/demobank/       the demo application and its operator CLI
-src/cli/            discover, compile and replay
+src/
+├── browser/        the only code that touches the browser
+├── discovery/      the model loop, and the only code that calls a model
+├── compiler/       run → capability
+├── replay/         runs a capability, with no model
+├── handoff/        intervention prompts, control hand-over, recording a person's actions
+├── safety/         allowlists, approval rules, redaction
+├── workflow/       checks and value resolution shared by discovery and replay
+├── contracts/      the JSON schemas
+├── observability/  run records and budgets
+├── demobank/       the demo app
+└── cli/            the tp command
+tasks/              task definitions: goal, inputs, outputs
+values/             example inputs for each member
 ```
-
-Three boundaries are enforced by test rather than convention: replay may not
-reach the LLM module, the compiler may import nothing but the contracts, and no
-automation module may import DemoBank.
 
 ## Testing
 
 ```bash
-npm test          # 133 tests
+npm test             # 133 tests, against a real browser and the real demo app
 npm run typecheck
 ```
 
-The suite runs against a real browser and the real application — scripted-model
-tests cover one case per stop condition and one per refusal. Handoff tests stand
-a scripted person at the console who drives the same live browser with real
-input, then answer the intervention; a run containing a takeover is compiled and
-replayed for another member, so what the person did is proven replayable, not
-just recorded. A live-model smoke
-test covers the prompt itself and skips without an API key, so a model's
-judgement never gates CI.
+The tests use a scripted model, so they are deterministic and need no API key.
+One live-model test runs only when a key is set, and it never gates CI.
 
-## Report
+## Further reading
 
-[`REPORT.md`](REPORT.md) covers the architecture, the artifact schema,
-determinism and error handling, heterogeneity and multi-tenancy, escalation and
-handoff, safety, and what V1 deliberately cuts.
-
-## Evidence
-
-[`evidence/`](evidence/) holds real discovery and replay runs. It includes
-replay with different parameters, a business outcome, a recovered session
-expiry, a permission refusal handed to a person, and a manual takeover that
-replay carries on from. Its README says exactly how each run was produced, and
-what in it was not a person.
+- [`REPORT.md`](REPORT.md) covers the architecture, the capability format, error
+  handling, other surfaces and multiple tenants, hand-over, safety and known
+  limitations.
+- [`evidence/`](evidence/) holds real discovery and replay runs. They include a
+  replay with different inputs, recovery from an expired session, a permission
+  refusal handed to a person, and a takeover done by hand.
 
 ## License
 
