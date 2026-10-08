@@ -95,6 +95,10 @@ artifact.
   optional input sits on the page is a fact about the application, so a
   template near one is split into pieces that hold whether it is empty or not.
   This was found by replaying across members, not by reasoning about it.
+- **The result is held to the oracle's shape.** A compiled live run must match
+  the hand-authored capability in phases, outputs bound, a single gated write,
+  the inputs written and a read-back after it -- with a comparable step count.
+  Shape, not equality: the model's own detours are allowed.
 
 ## Safety
 
@@ -224,7 +228,7 @@ automation module may import DemoBank.
 ## Testing
 
 ```bash
-npm test          # 125 tests
+npm test          # 127 tests
 npm run typecheck
 ```
 

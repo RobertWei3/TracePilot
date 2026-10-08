@@ -6,7 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CompileError, compile, urlPattern } from "../src/compiler/index.js";
-import { DiscoveryTrace, TaskContract, type Check } from "../src/contracts/index.js";
+import { DiscoveryTrace, TaskContract, type Capability, type Check } from "../src/contracts/index.js";
+import { loadCapability } from "../src/replay/index.js";
 
 const trace = DiscoveryTrace.parse(
   JSON.parse(readFileSync("tests/fixtures/update_mailing_address.trace.json", "utf8")),
@@ -102,4 +103,76 @@ test("a check spelling out an issued value is dropped rather than compiled", () 
   const { capability, notes } = compile(stale, task, OPTS);
   assert.equal(JSON.stringify(capability).includes(ISSUED), false);
   assert.ok(notes.some((n) => /dropped a check/.test(n)));
+});
+
+// --- shape-equivalence with the oracle -------------------------------------
+//
+// P3's acceptance check from the V1 plan: a compiled artifact should be
+// shape-equivalent to the hand-authored oracle -- same phases, same outputs
+// bound, a comparable step count. Shape, not equality: the model takes its own
+// route (an extra assertion here, a detour there), and that is fine as long as
+// the workflow it describes is the same one.
+
+type Shape = {
+  phases: string[];
+  outputs: string[];
+  writes: number;
+  gateBeforeWrite: boolean;
+  written: string[];
+  readsBack: boolean;
+};
+
+/** The input a value reference ultimately reads, through any transform. */
+function inputOf(v: unknown): string | null {
+  if (!v || typeof v !== "object") return null;
+  if ("input" in v) return (v as { input: string }).input;
+  if ("transform" in v) return inputOf((v as { transform: { arg?: unknown } }).transform.arg);
+  return null;
+}
+
+function referencedInputs(v: unknown): string[] {
+  const direct = inputOf(v);
+  if (direct) return [direct];
+  const format = (v as { transform?: { format?: string } } | undefined)?.transform?.format ?? "";
+  return [...format.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
+}
+
+function shapeOf(cap: Capability): Shape {
+  const writeAt = cap.steps.findIndex((s) => s.effect === "consequential");
+  const written = [
+    ...new Set(cap.steps.filter((s) => s.action === "fill").map((s) => inputOf(s.value)).filter((n) => n?.startsWith("address."))),
+  ].sort() as string[];
+  return {
+    phases: cap.steps.map((s) => s.phase).filter((p, i, all) => p !== all[i - 1]),
+    outputs: Object.entries(cap.outputs).map(([name, o]) => `${name} ${o.pattern} ${o.source.extract.regex}`),
+    writes: cap.steps.filter((s) => s.effect === "consequential").length,
+    gateBeforeWrite: cap.steps.findIndex((s) => s.action === "approval_gate") < writeAt,
+    written,
+    // After the write, some check reads back a value that was written.
+    readsBack: cap.steps
+      .slice(writeAt + 1)
+      .some((s) => s.checks.some((c) => referencedInputs(c.value).some((n) => written.includes(n)))),
+  };
+}
+
+const oracle = loadCapability("tests/fixtures/update_mailing_address.v1.json");
+const withReadBack = DiscoveryTrace.parse(
+  JSON.parse(readFileSync("tests/fixtures/update_mailing_address.readback.trace.json", "utf8")),
+);
+
+test("a compiled run is shape-equivalent to the hand-authored oracle", () => {
+  const { capability } = compile(withReadBack, task, OPTS);
+  assert.deepEqual(shapeOf(capability), shapeOf(oracle));
+
+  const ratio = capability.steps.length / oracle.steps.length;
+  assert.ok(ratio >= 0.5 && ratio <= 2, `${capability.steps.length} steps against the oracle's ${oracle.steps.length}`);
+});
+
+test("a run recorded before read-back was required is not shape-equivalent, and says why", () => {
+  // The first fixture's run stopped at the confirmation page. It is kept as
+  // a record of the gap the read-back rule closed.
+  const { capability } = compile(trace, task, OPTS);
+  const shape = shapeOf(capability);
+  assert.equal(shape.readsBack, false);
+  assert.deepEqual({ ...shape, readsBack: true }, shapeOf(oracle));
 });
