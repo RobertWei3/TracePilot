@@ -49,6 +49,8 @@ export class ScriptedModel implements ModelClient {
   readonly name = "scripted";
   /** Every payload the loop asked about, for assertions on what was sent. */
   readonly seen: string[] = [];
+  /** What the loop told the model about each earlier turn, as of each call. */
+  readonly ledgers: ModelRequest["ledger"][] = [];
   private cursor = 0;
 
   constructor(
@@ -61,6 +63,7 @@ export class ScriptedModel implements ModelClient {
     assert.equal(req.payload.blocked, false, "a blocked payload must never reach the model");
     const text = req.payload.blocked ? "" : req.payload.text;
     this.seen.push(text);
+    this.ledgers.push(req.ledger.map((e) => ({ ...e })));
     const move = this.moves[this.cursor++] ?? this.exhausted;
     return { ok: true, raw: RawAction.parse({ reason: "scripted", ...move(text) }) };
   }
