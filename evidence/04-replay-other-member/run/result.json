@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "replay-2026-10-08T04-23-14-098Z",
+  "kind": "replay",
+  "capabilityId": "demobank.update_mailing_address",
+  "capabilityVersion": 1,
+  "lifecycle": "completed",
+  "outcome": "success",
+  "reasonCode": "OK",
+  "outputs": {
+    "confirmation_id": "CONF-BTYV8GQT"
+  },
+  "recoveries": [],
+  "drift": {
+    "stepsResolvedBelowRank1": [],
+    "score": 0
+  },
+  "budgets": {
+    "actionSteps": 18,
+    "observations": 0,
+    "modelCalls": 0,
+    "activeMs": 4590,
+    "humanWaitMs": 265
+  },
+  "control": [
+    {
+      "from": "NONE",
+      "to": "AGENT",
+      "at": "2026-10-08T04:23:14.177Z",
+      "reason": "replay started"
+    },
+    {
+      "from": "AGENT",
+      "to": "HUMAN",
+      "at": "2026-10-08T04:23:17.559Z",
+      "reason": "OK at s13"
+    },
+    {
+      "from": "HUMAN",
+      "to": "AGENT",
+      "at": "2026-10-08T04:23:17.824Z",
+      "reason": "operator chose resume"
+    }
+  ],
+  "approvals": [
+    {
+      "stepId": "s13",
+      "mode": "interactive",
+      "approvedBy": "operator",
+      "at": "2026-10-08T04:23:17.825Z",
+      "diffDigest": "sha256:7435afb265614c87"
+    }
+  ],
+  "startedAt": "2026-10-08T04:23:14.177Z",
+  "endedAt": "2026-10-08T04:23:18.954Z",
+  "evidenceDir": "runs/replay-2026-10-08T04-23-14-098Z"
+}

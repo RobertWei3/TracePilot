@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0.0",
+  "interventionId": "iv-f678d49c",
+  "runId": "discovery-2026-10-08T04-22-11-004Z-5444d3",
+  "kind": "approval_required",
+  "subject": {
+    "taskId": "demobank.update_mailing_address",
+    "goalSummary": "Update a member's mailing address in the member-service application. Find the member, open their record, change the mailing address to the supplied one, review the change, obtain approval, submit it, then confirm the update was actually stored and report the confirmation identifier the application i"
+  },
+  "step": {
+    "stepId": "s12",
+    "index": 11,
+    "action": "approval_gate",
+    "targetSummary": "consequential change pending"
+  },
+  "currentState": {
+    "url": "http://localhost:4000/members/<input:member_id>/review",
+    "title": "Review changes · Ashford Mutual — Member Service",
+    "visibleSummary": "(not persisted; see screenshotRef)",
+    "screenshotRef": "runs/discovery-2026-10-08T04-22-11-004Z-5444d3/screenshots/iv-s12-muz15yfs.jpg"
+  },
+  "expected": "operator approval before a consequential change",
+  "observed": "awaiting approval",
+  "reason": "Submitting the mailing address change is a durable write and needs authorisation.",
+  "reasonCode": "OK",
+  "pendingChange": {
+    "fields": [
+      {
+        "label": "textbox near \"Member ID or last name\" in \"Member search\"",
+        "from": "(empty)",
+        "to": "<input:member_id>"
+      },
+      {
+        "label": "textbox \"Address line 1\" in \"Edit mailing address — <input:member_id>\"",
+        "from": "(current value)",
+        "to": "<input:address.line1>"
+      },
+      {
+        "label": "textbox \"Address line 2\" in \"Edit mailing address — <input:member_id>\"",
+        "from": "(empty)",
+        "to": "<input:address.line2>"
+      },
+      {
+        "label": "textbox near \"City\" in \"Edit mailing address — <input:member_id>\"",
+        "from": "(current value)",
+        "to": "<input:address.city>"
+      },
+      {
+        "label": "textbox near \"State\" in \"Edit mailing address — <input:member_id>\"",
+        "from": "(current value)",
+        "to": "MA"
+      },
+      {
+        "label": "textbox near \"ZIP code\" in \"Edit mailing address — <input:member_id>\"",
+        "from": "(current value)",
+        "to": "<input:address.zip>"
+      }
+    ],
+    "digest": "sha256:21e0a487d89414ea"
+  },
+  "budgetsRemaining": {
+    "actionSteps": 15,
+    "observations": 29,
+    "modelCalls": 47,
+    "wallClockMs": 277124
+  },
+  "allowedResponses": [
+    "resume",
+    "abort"
+  ],
+  "createdAt": "2026-10-08T04:22:33.881Z"
+}

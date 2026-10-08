@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "replay-2026-10-08T04-23-20-479Z",
+  "kind": "replay",
+  "capabilityId": "demobank.update_mailing_address",
+  "capabilityVersion": 1,
+  "lifecycle": "completed",
+  "outcome": "business_outcome",
+  "reasonCode": "BUSINESS_OUTCOME",
+  "businessOutcome": {
+    "code": "MEMBER_NOT_FOUND",
+    "matchedCheck": {
+      "kind": "text_contains",
+      "value": {
+        "const": "No members matched that search."
+      },
+      "describes": "Search for member_id returns no records."
+    }
+  },
+  "recoveries": [],
+  "drift": {
+    "stepsResolvedBelowRank1": [],
+    "score": 0
+  },
+  "budgets": {
+    "actionSteps": 3,
+    "observations": 0,
+    "modelCalls": 0,
+    "activeMs": 1764,
+    "humanWaitMs": 0
+  },
+  "control": [
+    {
+      "from": "NONE",
+      "to": "AGENT",
+      "at": "2026-10-08T04:23:20.563Z",
+      "reason": "replay started"
+    }
+  ],
+  "approvals": [],
+  "startedAt": "2026-10-08T04:23:20.563Z",
+  "endedAt": "2026-10-08T04:23:22.243Z",
+  "evidenceDir": "runs/replay-2026-10-08T04-23-20-479Z"
+}

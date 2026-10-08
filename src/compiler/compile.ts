@@ -32,6 +32,14 @@ import {
 export type CompileOptions = {
   version: number;
   createdAt: string;
+  /**
+   * Runs of the same task that ended in a business outcome -- the application
+   * correctly saying no. A successful run never meets "no such member", so
+   * the recognizers that let replay tell that apart from a failure have to
+   * come from runs that did. Only their recognizers are taken; the workflow
+   * comes from the successful run alone.
+   */
+  outcomes?: DiscoveryTrace[];
   /** Where replay signs in. Discovery uses the same path. */
   loginUrl?: string;
 };
@@ -79,7 +87,7 @@ export function compile(trace: DiscoveryTrace, task: TaskContract, o: CompileOpt
     }),
   );
 
-  const lastConsequential = trace.steps.map((s) => s.effect).lastIndexOf("consequential");
+  const phases = phaseContext(trace, startPath);
   let before = startPath;
 
   trace.steps.forEach((t, i) => {
@@ -122,7 +130,7 @@ export function compile(trace: DiscoveryTrace, task: TaskContract, o: CompileOpt
     const moved = pathOf(after) !== pathOf(before);
     const step = makeStep({
       index: steps.length,
-      phase: phaseOf(t, i, lastConsequential),
+      phase: phaseOf(t, i, before, phases),
       action: t.action,
       effect: t.effect,
       // A target whose every candidate named an issued value cannot be
@@ -194,19 +202,54 @@ export function compile(trace: DiscoveryTrace, task: TaskContract, o: CompileOpt
     inputs: task.inputs,
     outputs,
     steps,
-    businessOutcomes: trace.businessOutcomes.map((b) => ({
-      code: b.code,
-      when: scrubCheck(b.when, issued, `business outcome ${b.code}`, notes),
-    })),
+    businessOutcomes: recognizers(trace, task, o.outcomes ?? [], issued, notes),
     expectedDialogs: [],
     provenance: {
       runId: trace.runId,
       model: trace.model,
       authoredBy: trace.authoredBy,
       appFingerprint: trace.appFingerprint,
+      ...(o.outcomes?.length ? { outcomeRunIds: o.outcomes.map((t) => t.runId) } : {}),
     },
   });
   return { capability, notes };
+}
+
+/**
+ * Business-outcome recognizers from the successful run and from any outcome
+ * runs, one per code. Each was checked against the live page that produced it
+ * before discovery accepted it, which is what makes it safe to carry over.
+ */
+function recognizers(
+  trace: DiscoveryTrace,
+  task: TaskContract,
+  outcomes: DiscoveryTrace[],
+  issued: string[],
+  notes: string[],
+): Capability["businessOutcomes"] {
+  for (const t of outcomes) {
+    if (t.taskId !== task.taskId) {
+      throw new CompileError(`outcome run ${t.runId} is for ${t.taskId}, not ${task.taskId}`);
+    }
+    if (t.outcome !== "business_outcome" || t.businessOutcomes.length === 0) {
+      throw new CompileError(
+        `outcome run ${t.runId} ended in ${t.outcome}; only a run that ended in a business outcome carries a recognizer`,
+      );
+    }
+  }
+  const out: Capability["businessOutcomes"] = [];
+  for (const t of [trace, ...outcomes]) {
+    const theirs = [...issued, ...Object.values(t.outputs).filter((v) => v.length > 0)];
+    for (const b of t.businessOutcomes) {
+      if (out.some((x) => x.code === b.code)) {
+        notes.push(`${t.runId}: kept the first recognizer for ${b.code}, dropped a second`);
+        continue;
+      }
+      out.push({ code: b.code, when: scrubCheck(b.when, theirs, `business outcome ${b.code}`, notes) });
+      if (t !== trace) notes.push(`recognizer ${b.code} taken from ${t.runId}`);
+    }
+  }
+  return out;
 }
 
 /** Dotted names of every input the task declares optional, at any depth. */
@@ -282,14 +325,47 @@ function makeStep(s: Omit<Step, "stepId" | "precondition" | "checks" | "authored
 
 /**
  * Phases are descriptive -- replay does not branch on them -- so they are
- * derived from what the step is, never from what the application is.
+ * derived from the run's own shape, never from what the application is:
+ *
+ *   navigate  an explicit load
+ *   submit    the write; verify, everything after it
+ *   review    the approval gate, and whatever happens on the page it is on
+ *   search    before any page that names a record (no input in its path)
+ *   edit      the page where values are typed
+ *   details   the rest: record pages on the way to the edit page
+ *
+ * A click that moves the page belongs to where it goes -- "Review changes"
+ * is the start of review, not the end of editing -- which is how the
+ * hand-authored oracle divides the workflow too.
  */
-function phaseOf(t: TraceStep, i: number, lastConsequential: number): Step["phase"] {
-  if (t.effect === "consequential") return "submit";
-  if (lastConsequential >= 0 && i > lastConsequential) return "verify";
-  if (t.action === "approval_gate") return "review";
+type PhaseContext = { lastConsequential: number; gatePage: string | null; fillPages: Set<string> };
+
+function phaseContext(trace: DiscoveryTrace, startPath: string): PhaseContext {
+  const fillPages = new Set<string>();
+  let gatePage: string | null = null;
+  let before = startPath;
+  for (const t of trace.steps) {
+    if (t.action === "fill") fillPages.add(pathOf(before));
+    if (t.action === "approval_gate" && gatePage === null) gatePage = pathOf(before);
+    before = t.url;
+  }
+  return {
+    lastConsequential: trace.steps.map((s) => s.effect).lastIndexOf("consequential"),
+    gatePage,
+    fillPages,
+  };
+}
+
+function phaseOf(t: TraceStep, i: number, before: string, ctx: PhaseContext): Step["phase"] {
   if (t.action === "navigate") return "navigate";
-  if (t.action === "fill" || t.action === "press") return "edit";
+  if (t.effect === "consequential") return "submit";
+  if (ctx.lastConsequential >= 0 && i > ctx.lastConsequential) return "verify";
+  if (t.action === "approval_gate") return "review";
+  const moved = pathOf(t.url) !== pathOf(before);
+  const page = pathOf((t.action === "click" || t.action === "press") && moved ? t.url : before);
+  if (page === ctx.gatePage) return "review";
+  if (!page.includes("<input:")) return "search";
+  if (ctx.fillPages.has(page)) return "edit";
   return "details";
 }
 

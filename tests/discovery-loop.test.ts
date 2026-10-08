@@ -100,6 +100,28 @@ test("a write is not finished until it is read back from the record", async (t) 
   assert.match(refusals, /not been read back/);
 });
 
+test("the model is told when the read-back is complete, not left to guess", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // The record page marks the address sensitive, so the model cannot see the
+  // values it is asserting. A live run asserted them a dozen times over and
+  // spent its whole model-call budget without ever calling done.
+  const model = new ScriptedModel([
+    ...toReview,
+    ...throughSubmit,
+    ...readBack,
+    () => ({ action: "done", reason: "the stored address was read back" }),
+  ]);
+  const { result } = await runDiscovery({ app, model });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  const told = model.ledgers.at(-1)!.map((e) => e.result);
+  const firstReadBack = told.findIndex((r) => /read back/.test(r));
+  assert.ok(firstReadBack >= 0, told.join("\n"));
+  assert.match(told[firstReadBack]!, /call done/);
+});
+
 test("echoing an input on the page the write landed on is not a read-back", async (t) => {
   const app = await startApp();
   t.after(() => app.stop());

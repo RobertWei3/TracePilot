@@ -239,50 +239,7 @@ test("the sensitive region is masked in the image, not merely in the text", asyn
   if (result.blocked) return;
   assert.ok(result.image, "no image was produced");
 
-  // Scanning the text cannot verify an image. The bytes are decoded in the
-  // browser that is already running, which avoids adding an image dependency.
-  const mean = await surface.page.evaluate(
-    async ({ b64, rect }) => {
-      const img = new Image();
-      await new Promise((res, rej) => {
-        img.onload = res;
-        img.onerror = rej;
-        img.src = `data:image/jpeg;base64,${b64}`;
-      });
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0);
-      // Inset, so antialiasing at the mask edge cannot dominate the sample.
-      const d = ctx.getImageData(
-        Math.round(rect.x) + 2,
-        Math.round(rect.y) + 2,
-        Math.max(1, Math.round(rect.width) - 4),
-        Math.max(1, Math.round(rect.height) - 4),
-      ).data;
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        r += d[i]!;
-        g += d[i + 1]!;
-        b += d[i + 2]!;
-      }
-      const n = d.length / 4;
-      return { r: r / n, g: g / n, b: b / n };
-    },
-    { b64: result.image.data.toString("base64"), rect: box },
-  );
-
-  // JPEG is lossy, so this is mean colour within tolerance, not exact pixels.
-  const target = Number.parseInt(MASK_COLOR.slice(1, 3), 16);
-  for (const channel of [mean.r, mean.g, mean.b]) {
-    assert.ok(
-      Math.abs(channel - target) < 24,
-      `sensitive region is not masked in the image (channel mean ${channel.toFixed(1)}, expected ~${target})`,
-    );
-  }
+  assertMasked(await meanColour(result.image.data, box), "sensitive region");
 });
 
 test("the redaction marker does not outlive the capture that needs it", async () => {
@@ -320,4 +277,76 @@ test("a descriptor for a redacted element carries no text and still resolves", a
   // Unreadable must still mean actionable.
   const res = await surface.locate(d, 3000);
   assert.equal(res.ok, true, `redacted control did not resolve: ${summarize(d)}`);
+});
+
+/**
+ * Mean colour of a region of a JPEG. Scanning text cannot verify an image, so
+ * the bytes are decoded in the browser that is already running, which avoids
+ * adding an image dependency.
+ */
+async function meanColour(jpeg: Buffer, rect: { x: number; y: number; width: number; height: number }) {
+  return surface.page.evaluate(
+    async ({ b64, rect }) => {
+      const img = new Image();
+      await new Promise((res, rej) => {
+        img.onload = res;
+        img.onerror = rej;
+        img.src = `data:image/jpeg;base64,${b64}`;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      // Inset, so antialiasing at the mask edge cannot dominate the sample.
+      const d = ctx.getImageData(
+        Math.round(rect.x) + 2,
+        Math.round(rect.y) + 2,
+        Math.max(1, Math.round(rect.width) - 4),
+        Math.max(1, Math.round(rect.height) - 4),
+      ).data;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        r += d[i]!;
+        g += d[i + 1]!;
+        b += d[i + 2]!;
+      }
+      const n = d.length / 4;
+      return { r: r / n, g: g / n, b: b / n };
+    },
+    { b64: jpeg.toString("base64"), rect },
+  );
+}
+
+/** JPEG is lossy, so this is mean colour within tolerance, not exact pixels. */
+function isMaskColour(mean: { r: number; g: number; b: number }): boolean {
+  const target = Number.parseInt(MASK_COLOR.slice(1, 3), 16);
+  return [mean.r, mean.g, mean.b].every((c) => Math.abs(c - target) < 24);
+}
+
+function assertMasked(mean: { r: number; g: number; b: number }, what: string): void {
+  assert.ok(isMaskColour(mean), `${what} is not masked in the image (mean ${JSON.stringify(mean)})`);
+}
+
+test("a screenshot masks what the text records tag: credentials and input values", async () => {
+  await reset();
+  // The operator's username is in the header of every page, and the edit form
+  // holds the new address once it is typed. Both were legible in evidence
+  // screenshots while every text record had them redacted or tagged.
+  await surface.navigate(`${app.baseUrl}/members/M-1002/edit`);
+  await surface.page.locator("#l1").fill(INPUTS["address.line1"]);
+
+  const user = (await surface.page.locator(".topbar span").nth(1).boundingBox())!;
+  const typed = (await surface.page.locator("#l1").boundingBox())!;
+  // Not the heading: "Edit mailing address — M-1002" shows the member id.
+  const button = (await surface.page.getByRole("button", { name: "Review changes" }).boundingBox())!;
+  const shot = await surface.screenshot();
+  assert.ok(shot.buffer, "no image was produced");
+
+  assertMasked(await meanColour(shot.buffer!, user), "the operator's username");
+  assertMasked(await meanColour(shot.buffer!, typed), "a typed input value");
+  // And not everything: the page's own furniture stays legible.
+  assert.equal(isMaskColour(await meanColour(shot.buffer!, button)), false, "the Review button was masked too");
 });

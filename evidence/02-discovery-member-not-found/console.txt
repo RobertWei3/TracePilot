@@ -1,0 +1,19 @@
+04:22:56 · control_transfer       NONE -> AGENT: discovery started
+04:22:56 · discovery_started      demobank.update_mailing_address with deepseek-flash
+04:22:56 · session_established    
+04:22:58 ✓ step_recorded          fill -- Enter member ID to search for the member.  @ /
+04:22:59 ✓ step_recorded          click -- Search for the member using the entered member_id.  @ /search
+04:23:04 ✓ step_recorded          fill -- Re-fill the search box with the member ID before searching again.  @ /search
+04:23:05 ✓ step_recorded          click -- Search for the member by ID.  @ /search
+04:23:08 ✓ step_recorded          click -- Re-submit the search with the member ID to get the record row.  @ /search
+04:23:09 ✓ step_recorded          assert -- The search for the member returned no results; recording this business outcome.  @ /search
+04:23:12 · discovery_finished     the application returned MEMBER_NOT_FOUND
+------------------------------------------------------------------------
+business_outcome [BUSINESS_OUTCOME]  run discovery-2026-10-08T04-22-56-133Z-e78511
+------------------------------------------------------------------------
+outputs   : {}
+business  : MEMBER_NOT_FOUND
+budgets   : 5 steps | 9 observations | 10 model calls
+fragility : 0 step(s) below rank 1 (0.00)
+evidence  : runs/discovery-2026-10-08T04-22-56-133Z-e78511
+------------------------------------------------------------------------

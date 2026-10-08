@@ -600,8 +600,19 @@ export class DiscoveryExecutor {
       );
     }
     this.record({ action: "assert", reason: raw.reason, effect: "reversible", checks: [check] });
-    if (this.sawConsequential && this.isReadBack(check)) this.readBack = true;
-    return this.accept(proposed, `ok, verified: ${outcome.expected}`);
+    const completesReadBack = this.sawConsequential && !this.readBack && this.isReadBack(check);
+    if (completesReadBack) this.readBack = true;
+    // Say it when the requirement is met. The record page may mask the very
+    // values being asserted, so the model cannot see for itself that it has
+    // verified enough -- left to guess, a live run kept asserting until its
+    // budget ran out.
+    const unbound = this.outputNames.filter((n) => this.outputs[n] === undefined);
+    const next = !completesReadBack
+      ? ""
+      : unbound.length
+        ? `; the change is now read back from the record -- bind ${unbound.join(", ")}, then call done`
+        : "; the change is now read back from the record and every output is bound -- call done";
+    return this.accept(proposed, `ok, verified: ${outcome.expected}${next}`);
   }
 
   /**

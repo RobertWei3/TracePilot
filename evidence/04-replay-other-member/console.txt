@@ -1,0 +1,92 @@
+04:23:14 · control_transfer       NONE -> AGENT: replay started
+04:23:14 · replay_started         demobank.update_mailing_address v1 (18 steps)
+04:23:14 · session_established    
+04:23:14 · step_started           navigate -- open the application
+04:23:14 · step_finished            @ /
+04:23:14 · step_started           fill -- Enter the member ID to search for the member.
+04:23:15 · action_performed       fill  @ /
+04:23:15 · step_finished            @ /
+04:23:15 · step_started           click -- Submit member search for the member_id.
+04:23:15 · action_performed       click  @ /search
+04:23:15 · step_finished            @ /search
+04:23:15 · step_started           click -- Open the member record found by the search.
+04:23:16 · action_performed       click  @ /members/<input:member_id>
+04:23:16 · step_finished            @ /members/<input:member_id>
+04:23:16 · step_started           click -- Open the mailing address edit form.
+04:23:16 · action_performed       click  @ /members/<input:member_id>/edit
+04:23:16 · step_finished            @ /members/<input:member_id>/edit
+04:23:16 · step_started           fill -- Fill address line 1 with the supplied value.
+04:23:16 · action_performed       fill  @ /members/<input:member_id>/edit
+04:23:16 · step_finished            @ /members/<input:member_id>/edit
+04:23:16 · step_started           fill -- Fill address line 2.
+04:23:16 · action_performed       fill  @ /members/<input:member_id>/edit
+04:23:16 · step_finished            @ /members/<input:member_id>/edit
+04:23:16 · step_started           fill -- Fill the city field with the supplied city.
+04:23:16 · action_performed       fill  @ /members/<input:member_id>/edit
+04:23:16 · step_finished            @ /members/<input:member_id>/edit
+04:23:16 · step_started           fill -- Fill the State field from the supplied input.
+04:23:16 · action_performed       fill  @ /members/<input:member_id>/edit
+04:23:16 · step_finished            @ /members/<input:member_id>/edit
+04:23:16 · step_started           fill -- Fill the ZIP code field with the supplied value.
+04:23:16 · action_performed       fill  @ /members/<input:member_id>/edit
+04:23:16 · step_finished            @ /members/<input:member_id>/edit
+04:23:16 · step_started           click -- Proceed to review the entered address changes.
+04:23:17 · action_performed       click  @ /members/<input:member_id>/review
+04:23:17 · step_finished            @ /members/<input:member_id>/review
+04:23:17 · step_started           assert -- Confirm the review page shows the new address composed from inputs.
+04:23:17 · step_finished            @ /members/<input:member_id>/review
+04:23:17 · step_started           approval_gate -- Submitting the mailing address change is a durable write and needs authorisation.
+04:23:17 · intervention_raised    the next step writes a durable change to a member record
+04:23:17 · control_transfer       AGENT -> HUMAN: OK at s13
+
+------------------------------------------------------------------------
+INTERVENTION REQUIRED  [approval_required]  iv-41f45adf
+------------------------------------------------------------------------
+Subject   : demobank.update_mailing_address v1
+Goal      : update mailing address for {input:member_id}
+Step      : s13 (#12) approval_gate -> consequential change pending
+URL       : http://localhost:4000/members/<input:member_id>/review
+Expected  : operator approval before a consequential change
+Observed  : awaiting approval
+Reason    : the next step writes a durable change to a member record [OK]
+Screenshot: runs/replay-2026-10-08T04-23-14-098Z/screenshots/iv-s13-muz16w51.jpg
+Budgets   : steps 12 | observations 40 | model calls 60 | 297s
+------------------------------------------------------------------------
+PENDING CHANGE -- this is what will be written:
+  textbox near "Member ID or last name" in "Member search" <current value>  ->  <input:member_id>
+  textbox "Address line 1" in "Edit mailing address — <input:member_id>" <current value>  ->  <input:address.line1>
+  textbox "Address line 2" in "Edit mailing address — <input:member_id>" (not read)  ->  
+  textbox near "City" in "Edit mailing address — <input:member_id>" <current value>  ->  <input:address.city>
+  textbox near "State" in "Edit mailing address — <input:member_id>" <current value>  ->  <input:address.state>
+  textbox near "ZIP code" in "Edit mailing address — <input:member_id>" <current value>  ->  <input:address.zip>
+  digest: sha256:7435afb265614c87
+------------------------------------------------------------------------
+The browser window is live. You may operate it directly now.
+Responses: resume | abort
+------------------------------------------------------------------------
+
+control: HUMAN — type one of [resume, abort]: 04:23:17 · operator_response      
+04:23:17 · control_transfer       HUMAN -> AGENT: operator chose resume
+04:23:17 · step_finished            @ /members/<input:member_id>/review
+04:23:17 · step_started           click -- Submit the reviewed mailing address change, which the operator has approved.
+04:23:18 · action_performed       click  @ /confirmation/CONF-BTYV8GQT
+04:23:18 · step_finished            @ /confirmation/CONF-BTYV8GQT
+04:23:18 · step_started           assert -- Record that the app confirms the mailing address update.
+04:23:18 · step_finished            @ /confirmation/CONF-BTYV8GQT
+04:23:18 · step_started           extract -- Bind the confirmation ID shown on the confirmation page.
+04:23:18 · output_extracted       bound confirmation_id
+04:23:18 · step_finished            @ /confirmation/CONF-BTYV8GQT
+04:23:18 · step_started           click -- Return to the member record to read back the stored address.
+04:23:18 · action_performed       click  @ /members/<input:member_id>
+04:23:18 · step_finished            @ /members/<input:member_id>
+04:23:18 · step_started           assert -- Verify street line1 appears on the reread record page.
+04:23:18 · step_finished            @ /members/<input:member_id>
+04:23:18 · replay_finished        
+------------------------------------------------------------------------
+success [OK]  run replay-2026-10-08T04-23-14-098Z
+------------------------------------------------------------------------
+outputs   : {"confirmation_id":"CONF-BTYV8GQT"}
+budgets   : 18 steps | 0 observations | 0 model calls
+fragility : 0 step(s) below rank 1 (0.00)
+evidence  : runs/replay-2026-10-08T04-23-14-098Z
+------------------------------------------------------------------------

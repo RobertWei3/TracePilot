@@ -95,6 +95,10 @@ artifact.
   optional input sits on the page is a fact about the application, so a
   template near one is split into pieces that hold whether it is empty or not.
   This was found by replaying across members, not by reasoning about it.
+- **The result is held to the oracle's shape.** A compiled live run must match
+  the hand-authored capability in phases, outputs bound, a single gated write,
+  the inputs written and a read-back after it -- with a comparable step count.
+  Shape, not equality: the model's own detours are allowed.
 
 ## Safety
 
@@ -173,7 +177,10 @@ npm run tp -- replay --capability capabilities/demobank.update_mailing_address.v
   --values values/member-1007.json
 ```
 
-`compile` writes the next free version and never overwrites one. It prints
+Pass `--outcomes <run>,...` to add the recognizers from runs that ended in a
+business outcome (the application correctly saying no), so replay can tell
+those from failures. `compile` writes the next free version and never
+overwrites one. It prints
 what it had to change, and marks the capability `needs_review` when a step
 cannot be made independent of the run it came from. `replay` takes the same
 options as `discover`.
@@ -224,7 +231,7 @@ automation module may import DemoBank.
 ## Testing
 
 ```bash
-npm test          # 125 tests
+npm test          # 133 tests
 npm run typecheck
 ```
 
@@ -236,6 +243,14 @@ replayed for another member, so what the person did is proven replayable, not
 just recorded. A live-model smoke
 test covers the prompt itself and skips without an API key, so a model's
 judgement never gates CI.
+
+## Evidence
+
+[`evidence/`](evidence/) holds real discovery and replay runs. It includes
+replay with different parameters, a business outcome, a recovered session
+expiry, a permission refusal handed to a person, and a manual takeover that
+replay carries on from. Its README says exactly how each run was produced, and
+what in it was not a person.
 
 ## License
 
