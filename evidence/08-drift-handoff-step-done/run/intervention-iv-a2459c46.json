@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
-  "interventionId": "iv-70b00794",
-  "runId": "replay-2026-10-08T04-23-37-041Z",
+  "interventionId": "iv-a2459c46",
+  "runId": "replay-2026-10-08T04-50-03-099Z",
   "kind": "replay_unrecoverable",
   "subject": {
     "capabilityId": "demobank.update_mailing_address",
@@ -18,7 +18,7 @@
     "url": "http://localhost:4000/members/<input:member_id>/edit",
     "title": "Edit mailing address · Ashford Mutual — Member Service",
     "visibleSummary": "(not persisted; see screenshotRef)",
-    "screenshotRef": "runs/replay-2026-10-08T04-23-37-041Z/screenshots/iv-s11-muz18245.jpg"
+    "screenshotRef": "runs/replay-2026-10-08T04-50-03-099Z/screenshots/iv-s11-muz26gau.jpg"
   },
   "expected": "click on button \"Preview changes\" in \"Edit mailing address — <input:member_id>\"",
   "observed": "no unique match for button \"Preview changes\" in \"Edit mailing address — <input:member_id>\"",
@@ -28,7 +28,7 @@
     "actionSteps": 14,
     "observations": 40,
     "modelCalls": 60,
-    "wallClockMs": 265084
+    "wallClockMs": 246452
   },
   "allowedResponses": [
     "resume",
@@ -37,5 +37,5 @@
     "complete",
     "abort"
   ],
-  "createdAt": "2026-10-08T04:24:11.959Z"
+  "createdAt": "2026-10-08T04:50:56.648Z"
 }

@@ -7,7 +7,8 @@ Nothing was written by hand, with the exceptions listed under
 
 Each numbered directory holds one run:
 
-- `console.txt` is what the CLI printed.
+- `console.txt` is what the CLI printed. 08 has none: it was run by hand in
+  the repository owner's own terminal.
 - `run/` is TracePilot's own record of the run, copied verbatim:
   - `events.jsonl`: every action, decision reason, refusal and control transfer.
   - `result.json`: the structured outcome.
@@ -24,7 +25,7 @@ Each numbered directory holds one run:
 | [05](05-replay-member-not-found/) | Replay 03 for M-9999 | `business_outcome` `MEMBER_NOT_FOUND` | 0 |
 | [06](06-session-expiry-recovered/) | Replay 03 with the session expiring mid-run | `success` after one re-login | 0 |
 | [07](07-permission-denied-handoff/) | Replay 03 with the operator's role refused (HTTP 403) | hand-over, then `aborted`; nothing written | 0 |
-| [08](08-drift-handoff-step-done/) | Replay a drifted copy of 03; a person performs the step it cannot | hand-over, `step_done`, then `success` | 0 |
+| [08](08-drift-handoff-step-done/) | Replay a drifted copy of 03; **the repository owner**, by hand, performs the step it cannot | hand-over, `step_done`, then `success` | 0 |
 
 ## What each run shows
 
@@ -78,13 +79,29 @@ state, observed state and reason, and control passed to `HUMAN`. The answer was
 `drifted-capability.json` with one change: the Review button's label was set to
 "Preview changes", as if the application had been relabelled.
 
-1. Replay could not find the button, retried twice, and handed over at s11.
-2. A person clicked the real button in the same live browser session.
-3. The recorder captured that click (`human_action click`), and only that
-   click.
-4. The answer was `step_done`.
-5. Replay re-verified the next step's precondition, ran the approval gate,
-   wrote, extracted and read back.
+This run was done by hand by the repository owner, in a visible browser at
+`--slow 1000`.
+
+1. Replay could not find the button, retried twice, and handed over at s11 on
+   the edit page (`intervention-iv-3cb2e86a.json`). Control passed to `HUMAN`.
+2. The owner clicked the real "Review changes" button in the same live browser
+   session.
+3. The recorder captured that click, and only that click:
+   `human_action click button "Review changes"`.
+4. The owner answered `step_done`.
+5. Replay re-verified the next step's precondition and reached the approval
+   gate. The owner approved it (`approvals: interactive`).
+6. Replay wrote, extracted and read back.
+
+The 53 seconds the owner held control are recorded as `humanWaitMs`. They are
+not counted against the run's active time.
+
+One attempt before this one is not included. In that attempt, the owner clicked
+during the agent's 30-second search for the button, before the hand-over. Replay
+still finished safely, because the next step's precondition held. But a click
+made while the agent holds control is not recorded as the person's, so that run
+could not show the recording. The run above clicks only after the prompt
+appears.
 
 ## What was altered after the run
 
@@ -97,30 +114,20 @@ state, observed state and reason, and control passed to `HUMAN`. The answer was
   - Node's `ExperimentalWarning` lines were dropped.
 
   Nothing in `run/` was altered.
-- **`08-drift-handoff-step-done/person.txt`.** This is the output of the
-  process that played the person. The member id it printed was replaced with
-  `<input:member_id>`.
 
 ## Who answered, and who was "the person"
 
-Nobody was at the console during these runs.
-
-- **The prompts** (approvals, `abort` in 07, `step_done` in 08) were typed
-  into the real CLI prompt by the Claude Code session that produced this
-  evidence, acting for the repository owner. The CLI read them from stdin
-  exactly as it would read a person's.
-- **"The person" in 08** was a separate process. It connected to the same live
-  browser over the Chrome DevTools Protocol and clicked the real button with
-  real input events, while the CLI waited at its prompt.
-
-That exercises the actual takeover path: the same session, the in-page recorder,
-the stdin prompt, and re-verification on hand-back. It is still not a human
-operator, and a recording of one doing 07 or 08 by hand would be the stronger
-demonstration.
+- **08** was operated entirely by the repository owner: the click in the
+  browser, `step_done` and the approval.
+- **01 to 07** had nobody at the console. Their prompts (approvals, and `abort`
+  in 07) were typed into the real CLI prompt by the Claude Code session that
+  produced this evidence, acting for the repository owner. The CLI read them
+  from stdin exactly as it would read a person's.
 
 ## Leak scan
 
-Every text file here (33) was scanned for:
+Every text file the runs produced (31; this README is excluded, since it names
+the synthetic members on purpose) was scanned for:
 
 - the DemoBank credentials and the model API key from `.env`;
 - every value in `values/*.json` of three or more characters;
@@ -128,7 +135,8 @@ Every text file here (33) was scanned for:
 
 There were no hits.
 
-The six screenshots were inspected by eye. The username, member row, current
+The six screenshots, including the two from the owner's run, were inspected by
+eye. The username, member row, current
 and new address and every filled field are masked.
 
 One exception is by design: two-letter state codes are shorter than the
@@ -153,7 +161,8 @@ npm run tp -- replay --capability capabilities/demobank.update_mailing_address.v
 npm run tp -- replay --capability capabilities/demobank.update_mailing_address.v1.json --values values/member-missing.json
 npm run demobank -- scenario set expire_at_request=8   # then the 04 command
 npm run demobank -- scenario set force_403=true        # then the 04 command
-npm run tp -- replay --capability <a copy with the Review label changed> --values values/member-1002.json
+npm run tp -- replay --capability evidence/08-drift-handoff-step-done/drifted-capability.json --values values/member-1002.json --slow 1000
+# wait for INTERVENTION REQUIRED before touching the browser, then click "Review changes" and answer step_done
 ```
 
 These runs used `--headless`. Without it, the browser window is visible, and

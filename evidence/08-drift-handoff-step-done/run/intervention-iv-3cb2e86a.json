@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
-  "interventionId": "iv-2b1deabf",
-  "runId": "replay-2026-10-08T04-23-37-041Z",
+  "interventionId": "iv-3cb2e86a",
+  "runId": "replay-2026-10-08T04-50-03-099Z",
   "kind": "approval_required",
   "subject": {
     "capabilityId": "demobank.update_mailing_address",
@@ -18,7 +18,7 @@
     "url": "http://localhost:4000/members/<input:member_id>/review",
     "title": "Review changes · Ashford Mutual — Member Service",
     "visibleSummary": "(not persisted; see screenshotRef)",
-    "screenshotRef": "runs/replay-2026-10-08T04-23-37-041Z/screenshots/iv-s13-muz182wj.jpg"
+    "screenshotRef": "runs/replay-2026-10-08T04-50-03-099Z/screenshots/iv-s13-muz2783j.jpg"
   },
   "expected": "operator approval before a consequential change",
   "observed": "awaiting approval",
@@ -63,11 +63,11 @@
     "actionSteps": 12,
     "observations": 40,
     "modelCalls": 60,
-    "wallClockMs": 264602
+    "wallClockMs": 246403
   },
   "allowedResponses": [
     "resume",
     "abort"
   ],
-  "createdAt": "2026-10-08T04:24:12.980Z"
+  "createdAt": "2026-10-08T04:51:32.672Z"
 }
