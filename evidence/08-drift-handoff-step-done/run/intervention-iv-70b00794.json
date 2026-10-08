@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0.0",
+  "interventionId": "iv-70b00794",
+  "runId": "replay-2026-10-08T04-23-37-041Z",
+  "kind": "replay_unrecoverable",
+  "subject": {
+    "capabilityId": "demobank.update_mailing_address",
+    "version": 1,
+    "goalSummary": "replay demobank.update_mailing_address"
+  },
+  "step": {
+    "stepId": "s11",
+    "index": 10,
+    "action": "click",
+    "targetSummary": "button \"Preview changes\" in \"Edit mailing address — <input:member_id>\""
+  },
+  "currentState": {
+    "url": "http://localhost:4000/members/<input:member_id>/edit",
+    "title": "Edit mailing address · Ashford Mutual — Member Service",
+    "visibleSummary": "(not persisted; see screenshotRef)",
+    "screenshotRef": "runs/replay-2026-10-08T04-23-37-041Z/screenshots/iv-s11-muz18245.jpg"
+  },
+  "expected": "click on button \"Preview changes\" in \"Edit mailing address — <input:member_id>\"",
+  "observed": "no unique match for button \"Preview changes\" in \"Edit mailing address — <input:member_id>\"",
+  "reason": "replay could not complete this step as recorded; perform it by hand and answer step_done, or take over entirely",
+  "reasonCode": "TARGET_UNRESOLVED",
+  "budgetsRemaining": {
+    "actionSteps": 14,
+    "observations": 40,
+    "modelCalls": 60,
+    "wallClockMs": 265084
+  },
+  "allowedResponses": [
+    "resume",
+    "step_done",
+    "retry",
+    "complete",
+    "abort"
+  ],
+  "createdAt": "2026-10-08T04:24:11.959Z"
+}

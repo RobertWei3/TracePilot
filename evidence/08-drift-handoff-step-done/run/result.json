@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "replay-2026-10-08T04-23-37-041Z",
+  "kind": "replay",
+  "capabilityId": "demobank.update_mailing_address",
+  "capabilityVersion": 1,
+  "lifecycle": "completed",
+  "outcome": "success",
+  "reasonCode": "OK",
+  "outputs": {
+    "confirmation_id": "CONF-5A2DAFVQ"
+  },
+  "recoveries": [
+    {
+      "stepId": "s11",
+      "kind": "transient_retry",
+      "attempts": 3,
+      "succeeded": false
+    }
+  ],
+  "drift": {
+    "stepsResolvedBelowRank1": [],
+    "score": 0
+  },
+  "budgets": {
+    "actionSteps": 18,
+    "observations": 0,
+    "modelCalls": 0,
+    "activeMs": 36499,
+    "humanWaitMs": 1078
+  },
+  "control": [
+    {
+      "from": "NONE",
+      "to": "AGENT",
+      "at": "2026-10-08T04:23:37.118Z",
+      "reason": "replay started"
+    },
+    {
+      "from": "AGENT",
+      "to": "HUMAN",
+      "at": "2026-10-08T04:24:11.959Z",
+      "reason": "TARGET_UNRESOLVED at s11"
+    },
+    {
+      "from": "HUMAN",
+      "to": "AGENT",
+      "at": "2026-10-08T04:24:12.498Z",
+      "reason": "operator chose step_done"
+    },
+    {
+      "from": "AGENT",
+      "to": "HUMAN",
+      "at": "2026-10-08T04:24:12.980Z",
+      "reason": "OK at s13"
+    },
+    {
+      "from": "HUMAN",
+      "to": "AGENT",
+      "at": "2026-10-08T04:24:13.520Z",
+      "reason": "operator chose resume"
+    }
+  ],
+  "approvals": [
+    {
+      "stepId": "s13",
+      "mode": "interactive",
+      "approvedBy": "operator",
+      "at": "2026-10-08T04:24:13.520Z",
+      "diffDigest": "sha256:8aa747472aa9953b"
+    }
+  ],
+  "startedAt": "2026-10-08T04:23:37.118Z",
+  "endedAt": "2026-10-08T04:24:14.619Z",
+  "evidenceDir": "runs/replay-2026-10-08T04-23-37-041Z"
+}

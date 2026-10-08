@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "discovery-2026-10-08T04-22-11-004Z-5444d3",
+  "kind": "discovery",
+  "taskId": "demobank.update_mailing_address",
+  "lifecycle": "completed",
+  "outcome": "success",
+  "reasonCode": "OK",
+  "outputs": {
+    "confirmation_id": "CONF-NB6GUD75"
+  },
+  "recoveries": [],
+  "drift": {
+    "stepsResolvedBelowRank1": [],
+    "score": 0
+  },
+  "budgets": {
+    "actionSteps": 12,
+    "observations": 14,
+    "modelCalls": 20,
+    "activeMs": 44007,
+    "humanWaitMs": 84
+  },
+  "control": [
+    {
+      "from": "NONE",
+      "to": "AGENT",
+      "at": "2026-10-08T04:22:11.005Z",
+      "reason": "discovery started"
+    },
+    {
+      "from": "AGENT",
+      "to": "HUMAN",
+      "at": "2026-10-08T04:22:33.882Z",
+      "reason": "OK at s12"
+    },
+    {
+      "from": "HUMAN",
+      "to": "AGENT",
+      "at": "2026-10-08T04:22:33.967Z",
+      "reason": "operator chose resume"
+    }
+  ],
+  "approvals": [
+    {
+      "stepId": "s12",
+      "mode": "interactive",
+      "approvedBy": "operator",
+      "at": "2026-10-08T04:22:33.967Z",
+      "diffDigest": "sha256:21e0a487d89414ea"
+    }
+  ],
+  "startedAt": "2026-10-08T04:22:11.005Z",
+  "endedAt": "2026-10-08T04:22:55.094Z",
+  "evidenceDir": "runs/discovery-2026-10-08T04-22-11-004Z-5444d3"
+}

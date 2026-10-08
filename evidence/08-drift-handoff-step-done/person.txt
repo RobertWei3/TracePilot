@@ -1,0 +1,2 @@
+person sees: http://localhost:4000/members/<input:member_id>/edit
+person left page at: http://localhost:4000/members/<input:member_id>/review

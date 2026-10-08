@@ -1,0 +1,47 @@
+04:23:31 · control_transfer       NONE -> AGENT: replay started
+04:23:31 · replay_started         demobank.update_mailing_address v1 (18 steps)
+04:23:32 · session_established    
+04:23:32 · step_started           navigate -- open the application
+04:23:32 · step_finished            @ /
+04:23:32 · step_started           fill -- Enter the member ID to search for the member.
+04:23:32 · action_performed       fill  @ /
+04:23:32 · step_finished            @ /
+04:23:32 · step_started           click -- Submit member search for the member_id.
+04:23:33 · action_performed       click  @ /search
+04:23:33 · step_finished            @ /search
+04:23:33 · step_started           click -- Open the member record found by the search.
+04:23:33 · action_performed       click  @ /members/<input:member_id>
+04:23:33 · step_finished            @ /members/<input:member_id>
+04:23:33 · step_started           click -- Open the mailing address edit form.
+04:23:34 · action_performed       click  @ /members/<input:member_id>/edit
+04:23:34 · intervention_raised    this account cannot complete the step; a permitted operator must take over
+04:23:34 · control_transfer       AGENT -> HUMAN: PERMISSION_DENIED at s05
+
+------------------------------------------------------------------------
+INTERVENTION REQUIRED  [replay_unrecoverable]  iv-697d8232
+------------------------------------------------------------------------
+Subject   : demobank.update_mailing_address v1
+Goal      : replay demobank.update_mailing_address
+Step      : s05 (#4) click -> link "Edit mailing address" in "Mailing address"
+URL       : http://localhost:4000/members/<input:member_id>/edit
+Expected  : an authorised page
+Observed  : the application refused the operator's role
+Reason    : this account cannot complete the step; a permitted operator must take over [PERMISSION_DENIED]
+Screenshot: runs/replay-2026-10-08T04-23-31-580Z/screenshots/iv-s05-muz1796w.jpg
+Budgets   : steps 20 | observations 40 | model calls 60 | 297s
+------------------------------------------------------------------------
+The browser window is live. You may operate it directly now.
+Responses: resume | step_done | retry | complete | abort
+------------------------------------------------------------------------
+
+control: HUMAN — type one of [resume, step_done, retry, complete, abort]: 04:23:35 · operator_response      
+04:23:35 · control_transfer       HUMAN -> AGENT: operator chose abort
+04:23:35 · replay_finished        
+------------------------------------------------------------------------
+aborted [OPERATOR_ABORTED]  run replay-2026-10-08T04-23-31-580Z
+------------------------------------------------------------------------
+outputs   : {}
+budgets   : 5 steps | 0 observations | 0 model calls
+fragility : 0 step(s) below rank 1 (0.00)
+evidence  : runs/replay-2026-10-08T04-23-31-580Z
+------------------------------------------------------------------------

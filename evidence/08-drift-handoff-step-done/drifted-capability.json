@@ -1,0 +1,874 @@
+{
+  "schemaVersion": "1.0.0",
+  "capabilityId": "demobank.update_mailing_address",
+  "version": 1,
+  "createdAt": "2026-10-08T04:23:13.456Z",
+  "status": "ready",
+  "surfaceKind": "web",
+  "tenantId": null,
+  "overrides": null,
+  "origin": "http://localhost:4000",
+  "requires": {
+    "session": {
+      "credentialRef": "demobank.operator",
+      "loginUrl": "/login"
+    }
+  },
+  "inputs": {
+    "member_id": {
+      "type": "string",
+      "description": "The member's identifier, in the form M-0000. Search accepts it directly.",
+      "sensitive": false,
+      "optional": false
+    },
+    "address": {
+      "type": "object",
+      "description": "The new mailing address, one value per form field.",
+      "sensitive": false,
+      "optional": false,
+      "properties": {
+        "line1": {
+          "type": "string",
+          "description": "Street address",
+          "sensitive": false,
+          "optional": false
+        },
+        "line2": {
+          "type": "string",
+          "description": "Apartment or suite, may be empty",
+          "sensitive": false,
+          "optional": true
+        },
+        "city": {
+          "type": "string",
+          "sensitive": false,
+          "optional": false
+        },
+        "state": {
+          "type": "string",
+          "description": "Two-letter state code",
+          "sensitive": false,
+          "optional": false
+        },
+        "zip": {
+          "type": "string",
+          "description": "Five-digit ZIP code",
+          "sensitive": false,
+          "optional": false
+        }
+      }
+    }
+  },
+  "outputs": {
+    "confirmation_id": {
+      "type": "string",
+      "pattern": "^CONF-[A-Z0-9]{8}$",
+      "required": true,
+      "source": {
+        "stepId": "s16",
+        "extract": {
+          "kind": "text",
+          "regex": "CONF-[A-Z0-9]{8}"
+        }
+      }
+    }
+  },
+  "steps": [
+    {
+      "stepId": "s01",
+      "index": 0,
+      "phase": "navigate",
+      "action": "navigate",
+      "effect": "reversible",
+      "value": {
+        "const": "/"
+      },
+      "precondition": [],
+      "checks": [],
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/$",
+        "timeoutMs": 10000
+      },
+      "authoredBy": "agent",
+      "unresolved": false,
+      "reason": "open the application"
+    },
+    {
+      "stepId": "s02",
+      "index": 1,
+      "phase": "search",
+      "action": "fill",
+      "effect": "reversible",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "Member ID or last name",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "Member ID or last name"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "member_id"
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/$"
+        }
+      ],
+      "checks": [],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:76811d77ab635ef1",
+      "reason": "Enter the member ID to search for the member."
+    },
+    {
+      "stepId": "s03",
+      "index": 2,
+      "phase": "search",
+      "action": "click",
+      "effect": "reversible",
+      "target": {
+        "role": "button",
+        "accessibleName": "Search",
+        "nearbyText": "Member search Member ID or last name Search",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Member search"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Search"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Member search Member ID or last name Search"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "button[role=button]"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/$"
+        }
+      ],
+      "checks": [],
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/search\\?q={member_id}$",
+        "timeoutMs": 10000
+      },
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:7cfa301718506cb1",
+      "reason": "Submit member search for the member_id."
+    },
+    {
+      "stepId": "s04",
+      "index": 3,
+      "phase": "details",
+      "action": "click",
+      "effect": "reversible",
+      "target": {
+        "role": "link",
+        "accessibleName": "View",
+        "nearbyText": "View",
+        "tagName": "a",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Results",
+          "anchorInput": "member_id"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "link|View"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "View"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "a[role=link]"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/search\\?q={member_id}$"
+        }
+      ],
+      "checks": [],
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/members/{member_id}$",
+        "timeoutMs": 10000
+      },
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:9426c12afac4e8c2",
+      "reason": "Open the member record found by the search."
+    },
+    {
+      "stepId": "s05",
+      "index": 4,
+      "phase": "edit",
+      "action": "click",
+      "effect": "reversible",
+      "target": {
+        "role": "link",
+        "accessibleName": "Edit mailing address",
+        "nearbyText": "Edit mailing address Edit contact preferences",
+        "tagName": "a",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Mailing address"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "link|Edit mailing address"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Edit mailing address Edit contact preferences"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "a[role=link]"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}$"
+        }
+      ],
+      "checks": [],
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/members/{member_id}/edit$",
+        "timeoutMs": 10000
+      },
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:805031e65c2efe6c",
+      "reason": "Open the mailing address edit form."
+    },
+    {
+      "stepId": "s06",
+      "index": 5,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "target": {
+        "role": "textbox",
+        "accessibleName": "Address line 1",
+        "labelText": "Address line 1",
+        "nearbyText": "Address line 1",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address \u2014 <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "textbox|Address line 1"
+          },
+          {
+            "rank": 2,
+            "strategy": "label",
+            "expr": "Address line 1"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.line1"
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$"
+        }
+      ],
+      "checks": [],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:cc48c156d1d<input:address.zip>",
+      "reason": "Fill address line 1 with the supplied value."
+    },
+    {
+      "stepId": "s07",
+      "index": 6,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "target": {
+        "role": "textbox",
+        "accessibleName": "Address line 2",
+        "labelText": "Address line 2",
+        "nearbyText": "Address line 2",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address \u2014 <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "textbox|Address line 2"
+          },
+          {
+            "rank": 2,
+            "strategy": "label",
+            "expr": "Address line 2"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.line2"
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$"
+        }
+      ],
+      "checks": [],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:fdb6997cb5592793",
+      "reason": "Fill address line 2."
+    },
+    {
+      "stepId": "s08",
+      "index": 7,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "City",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address \u2014 <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "City"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.city"
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$"
+        }
+      ],
+      "checks": [],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:f9ca0adf0e2874a6",
+      "reason": "Fill the city field with the supplied city."
+    },
+    {
+      "stepId": "s09",
+      "index": 8,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "State",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address \u2014 <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "State"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.state"
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$"
+        }
+      ],
+      "checks": [],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:f9ca0adf0e2874a6",
+      "reason": "Fill the State field from the supplied input."
+    },
+    {
+      "stepId": "s10",
+      "index": 9,
+      "phase": "edit",
+      "action": "fill",
+      "effect": "reversible",
+      "target": {
+        "role": "textbox",
+        "nearbyText": "ZIP code",
+        "tagName": "input",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address \u2014 <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "text-scoped",
+            "expr": "ZIP code"
+          },
+          {
+            "rank": 2,
+            "strategy": "structural",
+            "expr": "input[role=textbox]"
+          }
+        ]
+      },
+      "value": {
+        "input": "address.zip"
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$"
+        }
+      ],
+      "checks": [],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:f9ca0adf0e2874a6",
+      "reason": "Fill the ZIP code field with the supplied value."
+    },
+    {
+      "stepId": "s11",
+      "index": 10,
+      "phase": "review",
+      "action": "click",
+      "effect": "reversible",
+      "target": {
+        "role": "button",
+        "accessibleName": "Preview changes",
+        "nearbyText": "Edit mailing address \u2014 <input:member_id> Address line 1 Address line 2 City Stat",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Edit mailing address \u2014 <input:member_id>"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Preview changes"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/edit$"
+        }
+      ],
+      "checks": [],
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/members/{member_id}/review$",
+        "timeoutMs": 10000
+      },
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:65eb6d0e39cf9af4",
+      "reason": "Proceed to review the entered address changes."
+    },
+    {
+      "stepId": "s12",
+      "index": 11,
+      "phase": "review",
+      "action": "assert",
+      "effect": "reversible",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/review$"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.line1}"
+            }
+          },
+          "describes": "Confirm the review page shows the new address composed from inputs."
+        },
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.city}"
+            }
+          },
+          "describes": "Confirm the review page shows the new address composed from inputs."
+        },
+        {
+          "kind": "text_contains",
+          "value": {
+            "transform": {
+              "op": "template",
+              "format": "{address.state} {address.zip}"
+            }
+          },
+          "describes": "Confirm the review page shows the new address composed from inputs."
+        },
+        {
+          "kind": "text_contains",
+          "value": {
+            "input": "address.line2"
+          },
+          "describes": "Confirm the review page shows the new address composed from inputs."
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "reason": "Confirm the review page shows the new address composed from inputs."
+    },
+    {
+      "stepId": "s13",
+      "index": 12,
+      "phase": "review",
+      "action": "approval_gate",
+      "effect": "reversible",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/review$"
+        }
+      ],
+      "checks": [],
+      "diffFields": [
+        {
+          "label": "textbox near \"Member ID or last name\" in \"Member search\"",
+          "value": {
+            "input": "member_id"
+          }
+        },
+        {
+          "label": "textbox \"Address line 1\" in \"Edit mailing address \u2014 <input:member_id>\"",
+          "value": {
+            "input": "address.line1"
+          }
+        },
+        {
+          "label": "textbox \"Address line 2\" in \"Edit mailing address \u2014 <input:member_id>\"",
+          "value": {
+            "input": "address.line2"
+          }
+        },
+        {
+          "label": "textbox near \"City\" in \"Edit mailing address \u2014 <input:member_id>\"",
+          "value": {
+            "input": "address.city"
+          }
+        },
+        {
+          "label": "textbox near \"State\" in \"Edit mailing address \u2014 <input:member_id>\"",
+          "value": {
+            "input": "address.state"
+          }
+        },
+        {
+          "label": "textbox near \"ZIP code\" in \"Edit mailing address \u2014 <input:member_id>\"",
+          "value": {
+            "input": "address.zip"
+          }
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "reason": "Submitting the mailing address change is a durable write and needs authorisation."
+    },
+    {
+      "stepId": "s14",
+      "index": 13,
+      "phase": "submit",
+      "action": "click",
+      "effect": "consequential",
+      "target": {
+        "role": "button",
+        "accessibleName": "Submit change",
+        "nearbyText": "Review mailing address change Member <input:member_id> \u2014 Dana Whitfield Current ",
+        "tagName": "button",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Review mailing address change"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "button|Submit change"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Review mailing address change Member <input:member_id> \u2014 Dana Whitfield Current "
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "button[role=button]"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}/review$"
+        }
+      ],
+      "checks": [],
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/confirmation/CONF-",
+        "timeoutMs": 10000
+      },
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:ff4ec09598d9fe45",
+      "reason": "Submit the reviewed mailing address change, which the operator has approved."
+    },
+    {
+      "stepId": "s15",
+      "index": 14,
+      "phase": "verify",
+      "action": "assert",
+      "effect": "reversible",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/confirmation/CONF-"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "const": "Mailing address updated."
+          },
+          "describes": "Record that the app confirms the mailing address update."
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "reason": "Record that the app confirms the mailing address update."
+    },
+    {
+      "stepId": "s16",
+      "index": 15,
+      "phase": "verify",
+      "action": "extract",
+      "effect": "reversible",
+      "target": {
+        "role": "generic",
+        "tagName": "span",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Confirmation"
+        },
+        "candidates": [
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "span[role=generic]"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/confirmation/CONF-"
+        }
+      ],
+      "checks": [],
+      "extractAs": "confirmation_id",
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:541249203a8e3342",
+      "reason": "Bind the confirmation ID shown on the confirmation page."
+    },
+    {
+      "stepId": "s17",
+      "index": 16,
+      "phase": "verify",
+      "action": "click",
+      "effect": "reversible",
+      "target": {
+        "role": "link",
+        "accessibleName": "Back to member",
+        "nearbyText": "Back to member",
+        "tagName": "a",
+        "scope": {
+          "containerRole": "region",
+          "containerName": "Confirmation"
+        },
+        "candidates": [
+          {
+            "rank": 1,
+            "strategy": "role+name",
+            "expr": "link|Back to member"
+          },
+          {
+            "rank": 2,
+            "strategy": "text-scoped",
+            "expr": "Back to member"
+          },
+          {
+            "rank": 3,
+            "strategy": "structural",
+            "expr": "a[role=link]"
+          }
+        ]
+      },
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/confirmation/CONF-"
+        }
+      ],
+      "checks": [],
+      "waitFor": {
+        "kind": "url",
+        "pattern": "/members/{member_id}$",
+        "timeoutMs": 10000
+      },
+      "authoredBy": "agent",
+      "unresolved": false,
+      "surfaceFingerprint": "sha256:db0c2ab798bf0b93",
+      "reason": "Return to the member record to read back the stored address."
+    },
+    {
+      "stepId": "s18",
+      "index": 17,
+      "phase": "verify",
+      "action": "assert",
+      "effect": "reversible",
+      "precondition": [
+        {
+          "kind": "url_matches",
+          "pattern": "/members/{member_id}$"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "text_contains",
+          "value": {
+            "input": "address.line1"
+          },
+          "describes": "Verify street line1 appears on the reread record page."
+        }
+      ],
+      "authoredBy": "agent",
+      "unresolved": false,
+      "reason": "Verify street line1 appears on the reread record page."
+    }
+  ],
+  "businessOutcomes": [
+    {
+      "code": "MEMBER_NOT_FOUND",
+      "when": {
+        "kind": "text_contains",
+        "value": {
+          "const": "No members matched that search."
+        },
+        "describes": "Search for member_id returns no records."
+      }
+    }
+  ],
+  "expectedDialogs": [],
+  "provenance": {
+    "runId": "discovery-2026-10-08T04-22-11-004Z-5444d3",
+    "model": "deepseek-flash",
+    "authoredBy": {
+      "agent": 17,
+      "human": 0
+    },
+    "appFingerprint": "sha256:15c4ee6b49dfa2c7",
+    "outcomeRunIds": [
+      "discovery-2026-10-08T04-22-56-133Z-e78511"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0.0",
+  "interventionId": "iv-697d8232",
+  "runId": "replay-2026-10-08T04-23-31-580Z",
+  "kind": "replay_unrecoverable",
+  "subject": {
+    "capabilityId": "demobank.update_mailing_address",
+    "version": 1,
+    "goalSummary": "replay demobank.update_mailing_address"
+  },
+  "step": {
+    "stepId": "s05",
+    "index": 4,
+    "action": "click",
+    "targetSummary": "link \"Edit mailing address\" in \"Mailing address\""
+  },
+  "currentState": {
+    "url": "http://localhost:4000/members/<input:member_id>/edit",
+    "title": "Not permitted · Ashford Mutual — Member Service",
+    "visibleSummary": "(not persisted; see screenshotRef)",
+    "screenshotRef": "runs/replay-2026-10-08T04-23-31-580Z/screenshots/iv-s05-muz1796w.jpg"
+  },
+  "expected": "an authorised page",
+  "observed": "the application refused the operator's role",
+  "reason": "this account cannot complete the step; a permitted operator must take over",
+  "reasonCode": "PERMISSION_DENIED",
+  "budgetsRemaining": {
+    "actionSteps": 20,
+    "observations": 40,
+    "modelCalls": 60,
+    "wallClockMs": 297107
+  },
+  "allowedResponses": [
+    "resume",
+    "step_done",
+    "retry",
+    "complete",
+    "abort"
+  ],
+  "createdAt": "2026-10-08T04:23:34.473Z"
+}

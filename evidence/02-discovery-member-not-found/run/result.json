@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "1.0.0",
+  "runId": "discovery-2026-10-08T04-22-56-133Z-e78511",
+  "kind": "discovery",
+  "taskId": "demobank.update_mailing_address",
+  "lifecycle": "completed",
+  "outcome": "business_outcome",
+  "reasonCode": "BUSINESS_OUTCOME",
+  "businessOutcome": {
+    "code": "MEMBER_NOT_FOUND",
+    "matchedCheck": {
+      "kind": "text_contains",
+      "value": {
+        "const": "No members matched that search."
+      },
+      "describes": "Search for member_id returns no records."
+    }
+  },
+  "recoveries": [],
+  "drift": {
+    "stepsResolvedBelowRank1": [],
+    "score": 0
+  },
+  "budgets": {
+    "actionSteps": 5,
+    "observations": 9,
+    "modelCalls": 10,
+    "activeMs": 16202,
+    "humanWaitMs": 0
+  },
+  "control": [
+    {
+      "from": "NONE",
+      "to": "AGENT",
+      "at": "2026-10-08T04:22:56.134Z",
+      "reason": "discovery started"
+    }
+  ],
+  "approvals": [],
+  "startedAt": "2026-10-08T04:22:56.134Z",
+  "endedAt": "2026-10-08T04:23:12.335Z",
+  "evidenceDir": "runs/discovery-2026-10-08T04-22-56-133Z-e78511"
+}

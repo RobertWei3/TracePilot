@@ -1,0 +1,4 @@
+ready  evidence/03-capability/demobank.update_mailing_address.v1.json  (18 steps, from discovery-2026-10-08T04-22-11-004Z-5444d3)
+  note: step 11: split a template around optional input address.line2, so it holds whether or not they are empty
+  note: step 15 (extract): removed this run's issued value from the target; it now resolves by structural
+  note: recognizer MEMBER_NOT_FOUND taken from discovery-2026-10-08T04-22-56-133Z-e78511
