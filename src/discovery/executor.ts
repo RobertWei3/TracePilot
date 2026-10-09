@@ -15,7 +15,7 @@ import {
   ExecutionResult as ResultSchema,
   Check as CheckSchema,
 } from "../contracts/index.js";
-import { SafetyViolation, checkAction, classifyEffect, redact } from "../safety/index.js";
+import { SafetyViolation, checkAction, classifyEffect, isMutating, redact } from "../safety/index.js";
 import {
   describe as describeEl,
   fingerprint,
@@ -55,6 +55,16 @@ export type DiscoveryOptions = {
   approval: ApprovalMode;
   /** False in CI and tests: escalations use the same path but stay terminal. */
   interactive: boolean;
+};
+
+/** A field filled since the last write, as the approval diff will show it. */
+type PendingFill = {
+  label: string;
+  /** The prior contents, or "(not read)" when they were never seen. */
+  from: string;
+  inputName: string;
+  /** Where the field's form submits; null when it is in no form. */
+  submitTarget: ObservedElement["submitTarget"];
 };
 
 class Terminal extends Error {
@@ -121,13 +131,7 @@ export class DiscoveryExecutor {
   private resolvedSteps = 0;
 
   /** Fills performed since the last approval, and what each field held before. */
-  private pendingFills: {
-    label: string;
-    from: string;
-    inputName: string;
-    /** Where the field's form submits; null when it is in no form. */
-    submitTarget: ObservedElement["submitTarget"];
-  }[] = [];
+  private pendingFills: PendingFill[] = [];
   /** Set by an approval, consumed by the one consequential action it authorises. */
   private approvedDigest: string | null = null;
   private sawConsequential = false;
@@ -821,8 +825,8 @@ export class DiscoveryExecutor {
    * because showing one field too many is harmless and hiding one that is
    * written is not.
    */
-  private submittableFills(): typeof this.pendingFills {
-    return this.pendingFills.filter((f) => f.submitTarget?.method.toUpperCase() !== "GET");
+  private submittableFills(): PendingFill[] {
+    return this.pendingFills.filter((f) => f.submitTarget === null || isMutating(f.submitTarget));
   }
 
   /** The gate as a step, so a compiled capability carries it too. */

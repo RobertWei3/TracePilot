@@ -225,6 +225,23 @@ test("the approval diff lists only the fields the write submits", async (t) => {
   assert.deepEqual(gate.diffFields!.map((f) => f.label), shown);
 });
 
+test("an approval with only a search box filled is refused", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // Something was typed, but nothing a write would submit.
+  const model = new ScriptedModel([
+    ...toReview.slice(0, 2), // to the search page, and fill the search box
+    () => ({ action: "request_approval", reason: "about to write" }),
+    () => ({ action: "give_up", reason: "the refusal is all this test needs" }),
+  ]);
+  await runDiscovery({ app, model, approval: { mode: "interactive" }, operator: async () => "abort" });
+
+  const told = model.ledgers.at(-1)!.at(-1)!;
+  assert.equal(told.proposed.includes("request_approval"), true, JSON.stringify(told));
+  assert.match(told.result, /^REJECTED: .*no field that this write would submit has been changed/);
+});
+
 test("an output is read once, and its URL is not a place to go back to", async (t) => {
   const app = await startApp();
   t.after(() => app.stop());

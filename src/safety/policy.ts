@@ -42,6 +42,11 @@ export function checkAction(policy: Policy, action: string): Verdict {
     : { ok: false, rule: "action_allowlist", attempted: action };
 }
 
+/** A submission that can change state: anything but a GET. */
+export function isMutating(submitTarget: { method: string } | null): boolean {
+  return submitTarget !== null && submitTarget.method.toUpperCase() !== "GET";
+}
+
 /**
  * A page action is consequential when it submits to a route declared as
  * mutating. Classification is mechanical -- never delegated to a model.
@@ -51,9 +56,8 @@ export function classifyEffect(
   submitTarget: { method: string; pathname: string } | null,
 ): "reversible" | "consequential" {
   if (!submitTarget) return "reversible";
-  const mutating = submitTarget.method.toUpperCase() !== "GET";
   const declared = policy.consequentialRoutes.some((p) => routeMatches(p, submitTarget.pathname));
-  return mutating && declared ? "consequential" : "reversible";
+  return isMutating(submitTarget) && declared ? "consequential" : "reversible";
 }
 
 export class SafetyViolation extends Error {

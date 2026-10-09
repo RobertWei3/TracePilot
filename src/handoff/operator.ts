@@ -55,7 +55,8 @@ function persisted(request: InterventionRequest): InterventionRequest {
             ...request.pendingChange,
             fields: request.pendingChange.fields.map((f) => ({
               ...f,
-              from: f.from === "(empty)" || f.from === "" ? f.from : "(current value)",
+              // Markers carry no value of their own and say something true.
+              from: f.from === "(empty)" || f.from === "(not read)" || f.from === "" ? f.from : "(current value)",
             })),
           },
         }
