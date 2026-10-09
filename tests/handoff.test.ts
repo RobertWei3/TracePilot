@@ -102,7 +102,14 @@ test("fields a person typed during a takeover are in the approval diff", async (
     },
   });
 
+  // The search box was typed by hand and recorded, and left out of the diff.
+  const humanFills = traceOf(store.dir)
+    .steps.filter((s: TraceStep) => s.authoredBy === "human" && s.action === "fill")
+    .map((s: TraceStep) => JSON.stringify(s.value));
+  assert.ok(humanFills.includes('{"input":"member_id"}'), JSON.stringify(humanFills));
+
   const labels = fields.map((f) => f.label);
+  assert.ok(!labels.some((l) => l.includes("Member search")), JSON.stringify(labels));
   assert.equal(labels.length, 5, JSON.stringify(labels));
   assert.ok(labels.every((l) => l.includes("Edit mailing address")), JSON.stringify(labels));
   // The recorder never saw the old contents, and the diff does not pretend it did.

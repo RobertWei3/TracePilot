@@ -43,8 +43,8 @@ export function checkAction(policy: Policy, action: string): Verdict {
 }
 
 /** A submission that can change state: anything but a GET. */
-export function isMutating(submitTarget: { method: string } | null): boolean {
-  return submitTarget !== null && submitTarget.method.toUpperCase() !== "GET";
+export function isMutating(submitTarget: { method: string }): boolean {
+  return submitTarget.method.toUpperCase() !== "GET";
 }
 
 /**
