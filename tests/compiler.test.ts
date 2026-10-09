@@ -1,12 +1,14 @@
 // The compiler is a pure function, so these tests need no browser. The trace is
 // a real one: recorded by deepseek-flash against DemoBank for M-1002, kept
 // verbatim so the compiler is held to what discovery actually emits rather
-// than to a tidier hand-written imitation of it.
+// than to a tidier hand-written imitation of it. One edit since: the search
+// box was removed from the approval gate's diffFields, which discovery no
+// longer records there (its diffDigest is left as the run recorded it).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CompileError, compile, urlPattern } from "../src/compiler/index.js";
-import { DiscoveryTrace, TaskContract, type Capability, type Check } from "../src/contracts/index.js";
+import { DiscoveryTrace, TaskContract, type Capability, type Check, type ValueRef } from "../src/contracts/index.js";
 import { loadCapability } from "../src/replay/index.js";
 
 const trace = DiscoveryTrace.parse(
@@ -34,6 +36,31 @@ test("nothing this run was issued survives into the capability", () => {
   const extract = capability.steps.find((s) => s.action === "extract")!;
   assert.ok(extract.target!.candidates.length > 0);
   assert.equal(extract.target!.accessibleName, undefined);
+});
+
+test("the approval gate lists the address fields and not the search box", () => {
+  const { capability } = compile(trace, task, OPTS);
+  const fields = capability.steps.find((s) => s.action === "approval_gate")!.diffFields!;
+  const labels = fields.map((f) => f.label);
+
+  // The hand-written oracle lists one combined "Current address" field, so
+  // the label sets cannot match; what must match is what they refer to.
+  assert.equal(labels.length, 5, JSON.stringify(labels));
+  assert.ok(labels.every((l) => l.includes("Edit mailing address")), JSON.stringify(labels));
+  assert.ok(!labels.some((l) => l.includes("Member search")));
+
+  // Inputs a value refers to, directly or through a template.
+  const refs = (v: ValueRef): string[] =>
+    "input" in v
+      ? [v.input]
+      : "transform" in v && v.transform.op === "template"
+        ? [...(v.transform.format ?? "").matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!)
+        : [];
+  const oracle = loadCapability("tests/fixtures/update_mailing_address.v1.json");
+  const oracleRefs = oracle.steps.find((s) => s.action === "approval_gate")!.diffFields!.flatMap((f) => refs(f.value));
+  const compiledRefs = fields.flatMap((f) => refs(f.value));
+  assert.ok(compiledRefs.every((r) => r.startsWith("address.")), JSON.stringify(compiledRefs));
+  assert.ok(oracleRefs.every((r) => compiledRefs.includes(r)), `oracle refers to ${oracleRefs}, compiled to ${compiledRefs}`);
 });
 
 test("URLs become parameterized patterns, cut open where an issued value was", () => {

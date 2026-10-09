@@ -121,14 +121,23 @@ export class DiscoveryExecutor {
   private resolvedSteps = 0;
 
   /** Fills performed since the last approval, and what each field held before. */
-  private pendingFills: { label: string; from: string; inputName: string }[] = [];
+  private pendingFills: {
+    label: string;
+    from: string;
+    inputName: string;
+    /** Where the field's form submits; null when it is in no form. */
+    submitTarget: ObservedElement["submitTarget"];
+  }[] = [];
   /** Set by an approval, consumed by the one consequential action it authorises. */
   private approvedDigest: string | null = null;
   private sawConsequential = false;
   /**
-   * What the last write changed: the inputs filled before it, less any that
-   * appear in the URL it was made from -- those identify the record (the
-   * member id in /members/M-1002/review), they are not what was written.
+   * What the last write changed: the inputs a write can carry (see
+   * submittableFills), less any that appear in the URL it was made from --
+   * those identify the record (the member id in /members/M-1002/review), they
+   * are not what was written. In DemoBank the member id is typed into a GET
+   * search form and is already gone; the URL test covers an id typed into a
+   * form that does submit.
    */
   private writtenInputs: string[] = [];
   /** Where the last write left the page. The record is read back elsewhere. */
@@ -532,7 +541,7 @@ export class DiscoveryExecutor {
     if (effect === "consequential") {
       this.approvedDigest = null;
       this.sawConsequential = true;
-      this.writtenInputs = [...new Set(this.pendingFills.map((f) => f.inputName))].filter(
+      this.writtenInputs = [...new Set(this.submittableFills().map((f) => f.inputName))].filter(
         (name) => !from.includes(`<input:${name}>`),
       );
       this.readBack = false;
@@ -573,7 +582,12 @@ export class DiscoveryExecutor {
       return this.accept(proposed, `failed: ${res.detail}`);
     }
 
-    this.pendingFills.push({ label: summarize(descriptor), from: before, inputName: raw.inputName! });
+    this.pendingFills.push({
+      label: summarize(descriptor),
+      from: before,
+      inputName: raw.inputName!,
+      submitTarget: el.submitTarget,
+    });
     this.record({
       action: "fill",
       reason: raw.reason,
@@ -722,13 +736,14 @@ export class DiscoveryExecutor {
    * agent's own claim checks nothing.
    */
   private async doApproval(raw: RawAction, proposed: string): Promise<Turn> {
-    if (this.pendingFills.length === 0) {
+    const submittable = this.submittableFills();
+    if (submittable.length === 0) {
       return this.refuse(
-        "there is nothing to approve: no field has been changed since the last approval",
+        "there is nothing to approve: no field that this write would submit has been changed since the last approval",
         proposed,
       );
     }
-    const fields = this.pendingFills.map((f) => ({
+    const fields = submittable.map((f) => ({
       label: f.label,
       from: f.from || "(empty)",
       to: this.o.ctx.inputs[f.inputName] ?? "",
@@ -797,13 +812,26 @@ export class DiscoveryExecutor {
     return this.accept(proposed, "approved by the operator");
   }
 
+  /**
+   * The fills a write can carry. A field in a GET form -- a search box --
+   * cannot be part of any durable change, so it is not shown for approval.
+   * The test is the form's method, not whether its target is a declared write:
+   * a form that submits to a review screen carries the values the write later
+   * submits, without being the write itself. A field in no form is kept,
+   * because showing one field too many is harmless and hiding one that is
+   * written is not.
+   */
+  private submittableFills(): typeof this.pendingFills {
+    return this.pendingFills.filter((f) => f.submitTarget?.method.toUpperCase() !== "GET");
+  }
+
   /** The gate as a step, so a compiled capability carries it too. */
   private recordGate(raw: RawAction, digest: string): void {
     this.record({
       action: "approval_gate",
       reason: raw.reason,
       effect: "reversible",
-      diffFields: this.pendingFills.map((f) => ({
+      diffFields: this.submittableFills().map((f) => ({
         label: f.label,
         value: { input: f.inputName } as ValueRef,
       })),
@@ -1246,6 +1274,18 @@ export class DiscoveryExecutor {
         // so each one's is where the next action happened instead.
         ...(kept[i + 1] ? { url: kept[i + 1]!.url } : {}),
       });
+      // What the person typed is part of the pending change as much as what
+      // the agent typed; an approval that left it out would show the operator
+      // less than the write submits. The recorder does not see the prior
+      // contents, so the diff says so rather than claiming the field was empty.
+      if (resolvedAction === "fill" && action.matchedInput) {
+        this.pendingFills.push({
+          label: summarize(descriptor),
+          from: "(not read)",
+          inputName: action.matchedInput,
+          submitTarget: action.element.submitTarget,
+        });
+      }
     }
   }
 

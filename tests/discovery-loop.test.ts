@@ -189,6 +189,42 @@ test("a pre-approval authorises one write; a second one needs a person", async (
   assert.equal(result.reasonCode, "APPROVAL_DECLINED");
 });
 
+test("the approval diff lists only the fields the write submits", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // The search box is filled on the way to the record, but it belongs to a
+  // form that only reads. An approval that lists it shows the operator a
+  // "change" that the write will never make.
+  let shown: string[] = [];
+  const model = new ScriptedModel([
+    ...toReview,
+    () => ({ action: "request_approval", reason: "about to write the new address" }),
+    () => ({ action: "give_up", reason: "the diff is all this test needs" }),
+  ]);
+  const { store } = await runDiscovery({
+    app,
+    model,
+    approval: { mode: "interactive" },
+    operator: async (request) => {
+      if (request.kind !== "approval_required") return "abort";
+      shown = request.pendingChange!.fields.map((f) => f.label);
+      return "resume";
+    },
+  });
+
+  const editForm = ["Address line 1", "Address line 2", "City", "State", "ZIP code"];
+  assert.equal(shown.length, editForm.length, `approval showed: ${JSON.stringify(shown)}`);
+  for (const label of shown) {
+    assert.ok(editForm.some((name) => label.includes(name)), `"${label}" is not an edit-form field`);
+  }
+
+  // The same set is what a compiled capability will carry.
+  const trace = DiscoveryTrace.parse(JSON.parse(readFileSync(path.join(store.dir, "trace.json"), "utf8")));
+  const gate = trace.steps.find((s) => s.action === "approval_gate")!;
+  assert.deepEqual(gate.diffFields!.map((f) => f.label), shown);
+});
+
 test("an output is read once, and its URL is not a place to go back to", async (t) => {
   const app = await startApp();
   t.after(() => app.stop());

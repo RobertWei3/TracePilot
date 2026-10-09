@@ -61,6 +61,43 @@ function person(...turns: [(page: Page) => Promise<void>, Awaited<ReturnType<Ope
 /** Moves up to the edit form, stopping before any field is filled. */
 const toEdit = toReview.slice(0, 5);
 
+test("fields a person typed during a takeover are in the approval diff", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // The agent typed only the search box; the person typed the address. The
+  // approval must show what the write will submit, whoever typed it.
+  let fields: { label: string; from: string }[] = [];
+  const model = new ScriptedModel([
+    ...toEdit,
+    ...stuck,
+    () => ({ action: "request_approval", reason: "about to write the new address" }),
+    () => ({ action: "give_up", reason: "the diff is all this test needs" }),
+  ]);
+  await runDiscovery({
+    app,
+    model,
+    approval: { mode: "interactive" },
+    operator: async (request, surface) => {
+      if (request.kind === "approval_required") {
+        fields = request.pendingChange!.fields;
+        return "resume";
+      }
+      if (fields.length === 0 && request.kind === "discovery_blocked" && surface.page.url().endsWith("/edit")) {
+        await fillAddressAndReview(surface.page);
+        return "resume";
+      }
+      return "abort";
+    },
+  });
+
+  const labels = fields.map((f) => f.label);
+  assert.equal(labels.length, 5, JSON.stringify(labels));
+  assert.ok(labels.every((l) => l.includes("Edit mailing address")), JSON.stringify(labels));
+  // The recorder never saw the old contents, and the diff does not pretend it did.
+  assert.ok(fields.every((f) => f.from === "(not read)"), JSON.stringify(fields.map((f) => f.from)));
+});
+
 test("a takeover that spans pages records every action, as references", async (t) => {
   const app = await startApp();
   t.after(() => app.stop());

@@ -74,6 +74,5 @@ In evidence 08 the repository owner did this by hand: replay handed over at a re
 - **Template splitting is a heuristic.** It splits at commas, which suits list-shaped text.
 - **Values under three characters are not tagged or masked.** An example is the state code `MA`; substring-tagging values that short would corrupt ordinary text.
 - **Interference while the agent holds control is not detected.** The next precondition is the only guard.
-- **The approval diff lists the search box as a pending change.**
 - **`deepseek-flash` varies between runs.** The same scenario took 17 to 56 model calls. Prompt caching is not implemented, and the live smoke test does not gate CI.
 - **There is no `inspect` command, version diffing, dashboard or deployment.**
