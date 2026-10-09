@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { startApp, OPERATOR_SECRETS } from "./helpers/app.js";
+import { freePort, startApp, OPERATOR_SECRETS } from "./helpers/app.js";
 import { ScriptedModel, FailingModel, pick } from "./helpers/scripted.js";
 import { PRE_APPROVED, readBack, runDiscovery, task, throughSubmit, toReview } from "./helpers/discovery.js";
 import { compile } from "../src/compiler/index.js";
@@ -457,6 +457,26 @@ test("an unreachable model is not charged to the decision budget", async (t) => 
   assert.equal(result.reasonCode, "DEAD_END");
   assert.equal(result.budgets.modelCalls, 0, "no decision was made, so nothing is charged");
   assert.equal(model.calls, 1);
+});
+
+test("an unreachable application is a load failure, not a crash", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+  const port = await freePort();
+  const deadUrl = `http://127.0.0.1:${port}`;
+
+  const model = new ScriptedModel([]);
+  const { result, store } = await runDiscovery({
+    app: { ...app, baseUrl: deadUrl, policy: { ...app.policy, allowedOrigins: [deadUrl] } },
+    model,
+  });
+
+  assert.equal(result.outcome, "failure");
+  assert.equal(result.reasonCode, "LOAD_FAILED");
+  assert.equal(result.failure!.observed, "net::ERR_CONNECTION_REFUSED");
+  assert.equal(model.used, 0, "the model is not asked about an application it cannot see");
+  const written = readFileSync(path.join(store.dir, "result.json"), "utf8") + readFileSync(store.logPath, "utf8");
+  assert.ok(!written.includes(`:${port}`), "the browser's error message, which names the URL, is not persisted");
 });
 
 test("a discovered run compiles into a capability that replays for another member, with no model", async (t) => {

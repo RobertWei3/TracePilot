@@ -34,6 +34,8 @@ export const ReasonCode = z.enum([
   "SCHEMA_INVALID",
   /** A model-bound payload failed redaction and was never sent. */
   "PAYLOAD_BLOCKED",
+  /** An unexpected error inside TracePilot; the run still ends with a result. */
+  "INTERNAL_ERROR",
 ]);
 export type ReasonCode = z.infer<typeof ReasonCode>;
 

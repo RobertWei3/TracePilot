@@ -19,6 +19,7 @@ import { SafetyViolation, checkAction, classifyEffect, redact } from "../safety/
 import {
   describe as describeEl,
   fingerprint,
+  LoadError,
   MIN_TAGGED_VALUE_LENGTH,
   summarize,
   tagInputs,
@@ -139,6 +140,7 @@ export class DiscoveryExecutor {
   private note: string | null = null;
   private consecutiveRejections = 0;
   private relogins = 0;
+  private reloads = 0;
   private seq = 0;
   private lastRaw: RawAction | null = null;
   private humanAuthored = 0;
@@ -189,10 +191,11 @@ export class DiscoveryExecutor {
     });
 
     try {
-      if (task.requires.session) {
-        const ok = await surface.ensureSession(
-          this.absolute("/login"),
-          task.requires.session.credentialRef,
+      const session = task.requires.session;
+      if (session) {
+        const ok = await this.withLoadRecovery(
+          () => surface.ensureSession(this.absolute("/login"), session.credentialRef),
+          { expected: "the login page to load" },
         );
         store.event({ type: "session_established", actor: "AGENT", outcome: ok ? "ok" : "failed" });
         if (!ok) {
@@ -203,7 +206,10 @@ export class DiscoveryExecutor {
         }
       }
 
-      await surface.navigate(this.absolute(new URL(task.targetUrl).pathname));
+      await this.withLoadRecovery(
+        () => surface.navigate(this.absolute(new URL(task.targetUrl).pathname)),
+        { expected: "the start page to load" },
+      );
       await this.reobserve();
     } catch (e) {
       return this.handleThrow(e);
@@ -880,6 +886,28 @@ export class DiscoveryExecutor {
     await this.reobserve();
   }
 
+  /**
+   * Setup loads get the same bounded reload as replay, so an unreachable
+   * application is reported as such rather than as a stuck run.
+   */
+  private async withLoadRecovery<T>(
+    load: () => Promise<T>,
+    { expected = "the page to load" }: { expected?: string } = {},
+  ): Promise<T> {
+    for (;;) {
+      try {
+        return await load();
+      } catch (e) {
+        if (!(e instanceof LoadError)) throw e;
+        if (this.reloads >= this.o.policy.recovery.reloads) {
+          throw new Terminal("failure", "LOAD_FAILED", { expected, observed: e.category });
+        }
+        this.reloads += 1;
+        this.o.store.event({ type: "recovery", actor: "AGENT", reason: "reload" });
+      }
+    }
+  }
+
   private async recoverSession(): Promise<boolean> {
     const session = this.o.task.requires.session;
     if (!session || this.relogins >= this.o.policy.recovery.relogins) return false;
@@ -1051,12 +1079,22 @@ export class DiscoveryExecutor {
         }),
       );
     }
-    const detail = e instanceof Error ? `${e.name}: ${e.message}` : "unknown error";
-    this.o.store.event({ type: "discovery_crashed", actor: "SYSTEM", reason: redact(detail) });
+    if (e instanceof LoadError) {
+      return this.finish(
+        new Terminal("failure", "LOAD_FAILED", { expected: "the page to load", observed: e.category }),
+      );
+    }
+    // Only the error's name is kept; its message may carry URLs or values.
+    const name = e instanceof Error ? e.name : "unknown";
+    this.o.store.event({
+      type: "discovery_crashed",
+      actor: "SYSTEM",
+      observed: name,
+    });
     return this.finish(
-      new Terminal("failure", "DEAD_END", {
+      new Terminal("failure", "INTERNAL_ERROR", {
         expected: "the loop to reach a stop condition",
-        observed: detail,
+        observed: name,
       }),
     );
   }

@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chooseRewind, loadCapability, replay } from "../src/replay/index.js";
 import { compile } from "../src/compiler/index.js";
 import { DiscoveryTrace, TaskContract } from "../src/contracts/index.js";
-import { startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
+import { freePort, startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
 
 const FIXTURE = "tests/fixtures/update_mailing_address.v1.json";
 
@@ -345,6 +345,50 @@ test("a run refused by the safety policy is a safety violation, not a failure", 
   assert.equal(result.reasonCode, "ROUTE_NOT_ALLOWLISTED");
   assert.equal(result.safety!.rule, "route_allowlist");
   assert.equal(result.safety!.attempted, "/_admin/scenario");
+});
+
+test("an unreachable application is a load failure, not a crash", async () => {
+  const port = await freePort();
+  const deadUrl = `http://127.0.0.1:${port}`;
+
+  const ownRoot = mkdtempSync(path.join(tmpdir(), "tracepilot-runs-"));
+  const result = await run("values/member-1002.json", {
+    baseUrl: deadUrl,
+    policy: { ...app.policy, allowedOrigins: [deadUrl] },
+    runRoot: ownRoot,
+  });
+
+  assert.equal(result.outcome, "failure");
+  assert.equal(result.reasonCode, "LOAD_FAILED");
+  assert.equal(result.budgets.modelCalls, 0);
+  assert.equal(result.failure!.expected, "the login page to load");
+  assert.equal(result.failure!.observed, "net::ERR_CONNECTION_REFUSED");
+  // One reload was spent before giving up, as for a load inside a step.
+  assert.deepEqual(
+    result.recoveries.map((r) => [r.kind, r.succeeded]),
+    [["reload", false]],
+  );
+  const [runDir] = readdirSync(ownRoot);
+  const resultFile = path.join(ownRoot, runDir!, "result.json");
+  assert.ok(existsSync(resultFile), "result.json should be written");
+  const written = readFileSync(resultFile, "utf8") + readFileSync(path.join(ownRoot, runDir!, "events.jsonl"), "utf8");
+  assert.ok(!written.includes(`:${port}`), "the browser's error message, which names the URL, is not persisted");
+});
+
+test("an unexpected error still ends in a result rather than a crash", async () => {
+  // No credentials registered: ensureSession throws a plain Error, which is
+  // neither a load failure nor anything else replay knows how to classify.
+  const ownRoot = mkdtempSync(path.join(tmpdir(), "tracepilot-runs-"));
+  const result = await run("values/member-1002.json", { secrets: {}, runRoot: ownRoot });
+
+  assert.equal(result.outcome, "failure");
+  assert.equal(result.reasonCode, "INTERNAL_ERROR");
+  assert.equal(result.failure!.observed, "Error", "only the error's name is kept");
+  assert.deepEqual(result.recoveries, [], "a non-load error does not spend a reload");
+  const [runDir] = readdirSync(ownRoot);
+  const events = readFileSync(path.join(ownRoot, runDir!, "events.jsonl"), "utf8");
+  assert.match(events, /"type":"replay_crashed"/);
+  assert.ok(!events.includes("no credentials registered"), "the error message is not persisted");
 });
 
 test("a capability compiled from discovery tells a missing member from a failure", async () => {

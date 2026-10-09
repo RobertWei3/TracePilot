@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -89,3 +90,12 @@ export const OPERATOR_SECRETS = {
   "demobank.operator.user": "teller-7q2",
   "demobank.operator.password": "demo-pass-4417",
 };
+
+/** A port nothing is listening on: taken from the OS, then released. */
+export async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}

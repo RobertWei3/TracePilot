@@ -9,7 +9,7 @@ import type {
 } from "../contracts/index.js";
 import { ExecutionResult as ResultSchema } from "../contracts/index.js";
 import { SafetyViolation, redact } from "../safety/index.js";
-import { summarize, type Surface } from "../browser/index.js";
+import { LoadError, summarize, type Surface } from "../browser/index.js";
 import type { BudgetLedger, RunStore } from "../observability/index.js";
 import type { ControlLedger, OperatorConsole } from "../handoff/index.js";
 import { chooseRewind } from "./rewind.js";
@@ -41,6 +41,9 @@ export type ReplayOptions = {
 };
 
 type Recovery = ExecutionResult["recoveries"][number];
+
+/** Stands in for a step id where something happened before any step, or outside one. */
+const RUN_LEVEL = "(run)";
 
 class Terminal extends Error {
   constructor(
@@ -118,10 +121,13 @@ export class ReplayExecutor {
     });
 
     try {
-      if (capability.requires.session) {
-        const ok = await surface.ensureSession(
-          this.absolute(capability.requires.session.loginUrl),
-          capability.requires.session.credentialRef,
+      const session = capability.requires.session;
+      if (session) {
+        // An unreachable application surfaces here first, before any step, and
+        // gets the same bounded reload as a load inside a step.
+        const ok = await this.withLoadRecovery(
+          () => surface.ensureSession(this.absolute(session.loginUrl), session.credentialRef),
+          { expected: "the login page to load" },
         );
         store.event({ type: "session_established", actor: "AGENT", outcome: ok ? "ok" : "failed" });
         if (!ok) {
@@ -251,7 +257,7 @@ export class ReplayExecutor {
 
     if (step.action === "navigate" || step.action === "read_back") {
       const url = this.absolute(this.resolveUrl(step.value));
-      const res = await this.withLoadRecovery(step, () => surface.navigate(url));
+      const res = await this.withLoadRecovery(() => surface.navigate(url), { step });
       this.lastPath = new URL(url).pathname + new URL(url).search;
       if (res.status !== null && res.status >= 400) {
         if (res.status === 403) {
@@ -626,27 +632,31 @@ export class ReplayExecutor {
     return last;
   }
 
-  private async withLoadRecovery(
-    step: Step,
-    load: () => Promise<{ status: number | null }>,
-  ): Promise<{ status: number | null }> {
-    try {
-      return await load();
-    } catch (e) {
-      if (e instanceof SafetyViolation) throw e;
-      if (this.usedRecovery.reload >= this.o.policy.recovery.reloads) {
-        throw new Terminal("failure", "LOAD_FAILED", {
-          step,
-          expected: "the page to load",
-          observed: e instanceof Error ? e.name : "unknown load error",
-        });
+  /**
+   * Reloads are bounded by policy across the whole run. `step` is absent while
+   * the session is being established, before the first step exists; the
+   * recovery is then recorded against the run as a whole.
+   */
+  private async withLoadRecovery<T>(
+    load: () => Promise<T>,
+    { step, expected = "the page to load" }: { step?: Step; expected?: string } = {},
+  ): Promise<T> {
+    let recovery: Recovery | undefined;
+    for (;;) {
+      try {
+        const res = await load();
+        if (recovery) recovery.succeeded = true;
+        return res;
+      } catch (e) {
+        if (!(e instanceof LoadError)) throw e;
+        if (this.usedRecovery.reload >= this.o.policy.recovery.reloads) {
+          throw new Terminal("failure", "LOAD_FAILED", { step, expected, observed: e.category });
+        }
+        this.usedRecovery.reload += 1;
+        recovery = { stepId: step?.stepId ?? RUN_LEVEL, kind: "reload", attempts: 1, succeeded: false };
+        this.recoveries.push(recovery);
+        this.o.store.event({ type: "recovery", actor: "AGENT", stepId: step?.stepId, reason: "reload" });
       }
-      this.usedRecovery.reload += 1;
-      this.recoveries.push({ stepId: step.stepId, kind: "reload", attempts: 1, succeeded: false });
-      this.o.store.event({ type: "recovery", actor: "AGENT", stepId: step.stepId, reason: "reload" });
-      const retry = await load();
-      this.recoveries[this.recoveries.length - 1]!.succeeded = true;
-      return retry;
     }
   }
 
@@ -847,7 +857,27 @@ export class ReplayExecutor {
         observed: e.detail,
       });
     }
-    throw e;
+    if (e instanceof LoadError) {
+      // A load outside the bounded-reload paths, such as returning to a page
+      // after a re-login.
+      return this.finish("failure", "LOAD_FAILED", {
+        expected: "the page to load",
+        observed: e.category,
+      });
+    }
+    // Anything else is a defect in TracePilot rather than in the run. It still
+    // ends in a result: a crash would lose the record of everything before it.
+    // Only the error's name is kept; its message may carry URLs or values.
+    const name = e instanceof Error ? e.name : "unknown";
+    this.o.store.event({
+      type: "replay_crashed",
+      actor: "SYSTEM",
+      observed: name,
+    });
+    return this.finish("failure", "INTERNAL_ERROR", {
+      expected: "the run to reach a result",
+      observed: name,
+    });
   }
 
   /**
@@ -1000,7 +1030,7 @@ export class ReplayExecutor {
       ...(outcome === "failure" && !detail.step
         ? {
             failure: {
-              stepId: "(run)",
+              stepId: RUN_LEVEL,
               stepIndex: -1,
               expected: redact(detail.expected ?? ""),
               observed: redact(detail.observed ?? ""),
