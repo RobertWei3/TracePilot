@@ -110,6 +110,23 @@ function installRecorder(cfg: {
     return "page";
   };
 
+  // The same rule as the observation builder's submitTargetOf: where this
+  // control's form would submit, so a fill made by hand is classified the same
+  // way as one made by the agent.
+  const submitTargetOf = (el: Element): { method: string; pathname: string } | null => {
+    const owner = (el as HTMLInputElement | HTMLButtonElement).form;
+    if (!(owner instanceof HTMLFormElement)) return null;
+    if (el instanceof HTMLButtonElement && (el.type === "button" || el.type === "reset")) return null;
+    if (el instanceof HTMLInputElement && (el.type === "button" || el.type === "reset")) return null;
+    try {
+      const action = el.getAttribute("formaction") || owner.getAttribute("action") || location.href;
+      const method = el.getAttribute("formmethod") || owner.getAttribute("method") || "GET";
+      return { method: method.toUpperCase(), pathname: new URL(action, location.href).pathname };
+    } catch {
+      return null;
+    }
+  };
+
   const record = (el: Element, eventType: string, typed: string | null): void => {
     const names = nameOf(el);
     const box = el.getBoundingClientRect();
@@ -140,6 +157,7 @@ function installRecorder(cfg: {
         enabled: true,
         priority: 2,
         box: { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) },
+        submitTarget: submitTargetOf(el),
       },
     });
   };

@@ -446,12 +446,6 @@
       "checks": [],
       "diffFields": [
         {
-          "label": "textbox near \"Member ID or last name\" in \"Member search\"",
-          "value": {
-            "input": "member_id"
-          }
-        },
-        {
           "label": "textbox \"Address line 1\" in \"Edit mailing address — <input:member_id>\"",
           "value": {
             "input": "address.line1"

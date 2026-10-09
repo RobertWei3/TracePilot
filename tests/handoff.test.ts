@@ -19,6 +19,7 @@ import { loadCapability, replay } from "../src/replay/index.js";
 import type { Operator } from "../src/handoff/index.js";
 
 const M1002 = JSON.parse(readFileSync("values/member-1002.json", "utf8")) as {
+  member_id: string;
   address: Record<string, string>;
 };
 
@@ -60,6 +61,66 @@ function person(...turns: [(page: Page) => Promise<void>, Awaited<ReturnType<Ope
 
 /** Moves up to the edit form, stopping before any field is filled. */
 const toEdit = toReview.slice(0, 5);
+
+test("fields a person typed during a takeover are in the approval diff", async (t) => {
+  const app = await startApp();
+  t.after(() => app.stop());
+
+  // The person does everything from the search page on: the search box as
+  // well as the address. The approval must show what the write will submit,
+  // whoever typed it -- and the search box is not part of that, whoever typed
+  // it either.
+  let fields: { label: string; from: string }[] = [];
+  const model = new ScriptedModel([
+    toReview[0]!, // to the search page
+    ...stuck,
+    () => ({ action: "request_approval", reason: "about to write the new address" }),
+    () => ({ action: "give_up", reason: "the diff is all this test needs" }),
+  ]);
+  let approvalId = "";
+  const { store } = await runDiscovery({
+    app,
+    model,
+    approval: { mode: "interactive" },
+    operator: async (request, surface) => {
+      if (request.kind === "approval_required") {
+        fields = request.pendingChange!.fields;
+        approvalId = request.interventionId;
+        return "resume";
+      }
+      if (fields.length === 0 && request.kind === "discovery_blocked" && surface.page.url().endsWith("/search")) {
+        const page = surface.page;
+        await page.locator("input[name=q]").fill(M1002.member_id);
+        await page.getByRole("button", { name: "Search" }).click();
+        await page.getByRole("link", { name: "View" }).click();
+        await page.getByRole("link", { name: "Edit mailing address" }).click();
+        await page.waitForURL(/\/edit$/);
+        await fillAddressAndReview(page);
+        return "resume";
+      }
+      return "abort";
+    },
+  });
+
+  // The search box was typed by hand and recorded, and left out of the diff.
+  const humanFills = traceOf(store.dir)
+    .steps.filter((s: TraceStep) => s.authoredBy === "human" && s.action === "fill")
+    .map((s: TraceStep) => JSON.stringify(s.value));
+  assert.ok(humanFills.includes('{"input":"member_id"}'), JSON.stringify(humanFills));
+
+  const labels = fields.map((f) => f.label);
+  assert.ok(!labels.some((l) => l.includes("Member search")), JSON.stringify(labels));
+  assert.equal(labels.length, 5, JSON.stringify(labels));
+  assert.ok(labels.every((l) => l.includes("Edit mailing address")), JSON.stringify(labels));
+  // The recorder never saw the old contents, and the diff does not pretend it did.
+  assert.ok(fields.every((f) => f.from === "(not read)"), JSON.stringify(fields.map((f) => f.from)));
+  // Nor does the record on disk, which otherwise writes "(current value)".
+  const persisted = JSON.parse(readFileSync(path.join(store.dir, `intervention-${approvalId}.json`), "utf8"));
+  assert.ok(
+    persisted.pendingChange.fields.every((f: { from: string }) => f.from === "(not read)"),
+    JSON.stringify(persisted.pendingChange.fields),
+  );
+});
 
 test("a takeover that spans pages records every action, as references", async (t) => {
   const app = await startApp();
