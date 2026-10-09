@@ -1,0 +1,52 @@
+name: Live discovery
+
+# A real model against the real application. Kept off pull requests: a
+# model's judgement is not a regression surface, so a failure here is a report
+# on the model and prompt, not a merge blocker.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      # Same as .env.example: deepseek-flash with thinking on tends to answer
+      # in prose instead of calling the tool.
+      TRACEPILOT_EFFORT: low
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npx tsx --test tests/discovery-live.test.ts
+
+      # Run records are redacted when written: inputs are tagged, registered
+      # secrets are masked, and screenshots are masked or omitted.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-runs
+          path: runs/
+          retention-days: 14
