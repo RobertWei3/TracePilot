@@ -9,7 +9,7 @@ import {
   type Observation,
   type ObserveConfig,
 } from "./observe.js";
-import { resolve, summarize, type Attempt } from "./descriptor.js";
+import { describe, resolve, summarize, type Attempt } from "./descriptor.js";
 
 export type SurfaceOptions = {
   policy: Policy;
@@ -168,7 +168,7 @@ export class Surface {
     return url;
   }
 
-  async observe(opts: { regionId?: string; offset?: number } = {}): Promise<Observation> {
+  async observe(opts: { regionId?: string; offset?: number; focusAttr?: string } = {}): Promise<Observation> {
     this.gateAction("observe");
     const cfg: ObserveConfig = {
       obsId: `obs${++this.obsCounter}`,
@@ -182,6 +182,7 @@ export class Surface {
       anchorInputs: this.policy.observation.anchorInputs,
       ...(opts.regionId ? { regionId: opts.regionId } : {}),
       ...(opts.offset ? { offset: opts.offset } : {}),
+      ...(opts.focusAttr ? { focusAttr: opts.focusAttr } : {}),
     };
     return this.page.evaluate(buildObservation, cfg);
   }
@@ -228,6 +229,28 @@ export class Surface {
   /** Resolve a descriptor to a live element, reporting which rank won. */
   async locate(d: Descriptor, timeoutMs?: number) {
     return resolve(this.page, d, timeoutMs ?? this.policy.budgets.stepTimeoutMs, this.inputs);
+  }
+
+  /**
+   * Describes the element `d` resolves to as it is now, built the way
+   * discovery built its descriptors: through the observation builder, so the
+   * text is tagged and redacted in the page exactly as it was then. Null when
+   * nothing unique resolves, or the observer would not report the element (an
+   * omitted region, say) -- either way there is nothing to compare.
+   */
+  async describeResolved(d: Descriptor): Promise<Descriptor | null> {
+    const res = await this.locate(d);
+    if (!res.ok) return null;
+    const attr = "data-tp-focus";
+    await res.locator.evaluate((el, a) => el.setAttribute(a, ""), attr);
+    try {
+      const obs = await this.observe({ focusAttr: attr });
+      const el = obs.elements[0];
+      return el ? describe(el) : null;
+    } finally {
+      await res.locator.evaluate((el, a) => el.removeAttribute(a), attr).catch(() => {});
+      await this.clearRedactionMarks();
+    }
   }
 
   async act(

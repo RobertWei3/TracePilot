@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chooseRewind, loadCapability, replay } from "../src/replay/index.js";
 import { compile } from "../src/compiler/index.js";
-import { DiscoveryTrace, TaskContract } from "../src/contracts/index.js";
+import { DiscoveryTrace, TaskContract, type Capability } from "../src/contracts/index.js";
 import { freePort, startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
 
 const FIXTURE = "tests/fixtures/update_mailing_address.v1.json";
@@ -322,6 +322,76 @@ test("drift is reported when a step resolves through a weaker strategy", async (
   assert.ok(result.drift.stepsResolvedBelowRank1.includes("s03"));
   assert.ok(result.drift.score > 0);
   assert.ok(result.recoveries.some((r) => r.kind === "candidate_fallthrough"));
+});
+
+/** A capability compiled from a real discovery run, so its steps carry real fingerprints. */
+function discovered(): Capability {
+  const trace = DiscoveryTrace.parse(
+    JSON.parse(readFileSync("tests/fixtures/update_mailing_address.trace.json", "utf8")),
+  );
+  const task = TaskContract.parse(JSON.parse(readFileSync("tasks/update-mailing-address.json", "utf8")));
+  return compile(trace, task, { version: 1, createdAt: "2026-10-06T00:00:00.000Z" }).capability;
+}
+
+test("an unchanged application shows no fingerprint drift, for any member", async () => {
+  // The oracle is hand-written and carries no fingerprints, so it can only
+  // show that their absence is not reported.
+  await app.reset();
+  const oracle = await run("values/member-1002.json");
+  assert.deepEqual(oracle.drift.fingerprintMismatches, []);
+
+  // The real guard: fingerprints recorded by discovery, replayed for the member
+  // it ran for and for another, whose ids and headings differ.
+  const capability = discovered();
+  assert.ok(capability.steps.filter((s) => s.surfaceFingerprint).length >= 10);
+  for (const values of ["values/member-1002.json", "values/member-1007.json"]) {
+    await app.reset();
+    const result = await run(values, { capability });
+    assert.equal(result.outcome, "success", `${values}: ${JSON.stringify(result.failure)}`);
+    assert.deepEqual(result.drift.fingerprintMismatches, [], values);
+    assert.equal(result.drift.score, 0, values);
+  }
+});
+
+test("a target that no longer matches its fingerprint is reported, and the run carries on", async () => {
+  await app.reset();
+  const capability = discovered();
+  const step = capability.steps.find((s) => s.action === "click" && s.surfaceFingerprint)!;
+  step.surfaceFingerprint = "sha256:ffffffffffffffff";
+
+  const result = await run("values/member-1002.json", { capability });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  assert.deepEqual(result.drift.fingerprintMismatches, [step.stepId]);
+  assert.equal(result.drift.score, Number((1 / capability.steps.length).toFixed(3)));
+  const events = readFileSync(path.join(result.evidenceDir, "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+  const mismatch = events.find((e) => e.type === "fingerprint_mismatch")!;
+  assert.equal(mismatch.stepId, step.stepId);
+  assert.equal(mismatch.expected, "sha256:ffffffffffffffff");
+  assert.match(mismatch.observed, /^sha256:[0-9a-f]{16}$/, "only a hash, never descriptor text");
+});
+
+test("a fingerprint damaged in storage is skipped rather than reported", async () => {
+  // Redaction tags input values wherever they appear when a record is written,
+  // and a hash's hex can contain one: evidence 03 holds
+  // "sha256:cc48c156d1d<input:address.zip>". It can never match, and says so.
+  await app.reset();
+  const capability = discovered();
+  const step = capability.steps.find((s) => s.action === "click" && s.surfaceFingerprint)!;
+  step.surfaceFingerprint = "sha256:cc48c156d1d<input:address.zip>";
+
+  const result = await run("values/member-1002.json", { capability });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  assert.deepEqual(result.drift.fingerprintMismatches, []);
+  const events = readFileSync(path.join(result.evidenceDir, "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+  assert.ok(events.some((e) => e.type === "fingerprint_unverifiable" && e.stepId === step.stepId));
 });
 
 test("a run refused by the safety policy is a safety violation, not a failure", async () => {

@@ -79,6 +79,12 @@ export type ObserveConfig = {
   regionId?: string;
   /** Skip this many eligible elements, for next-batch inspection. */
   offset?: number;
+  /**
+   * When set, only the element carrying this attribute is returned. Replay
+   * uses it to describe an element it has already resolved, through exactly
+   * the tagging, redaction and naming that discovery's descriptors came from.
+   */
+  focusAttr?: string;
 };
 
 /** What a field currently holds, stated without stating the value. */
@@ -466,7 +472,11 @@ export function buildObservation(cfg: ObserveConfig): Observation {
   // exactly what the text channel hid. The caller strips it after capture.
   for (const el of redactedEls) el.setAttribute("data-tp-redacted", "");
 
-  const eligible = cfg.regionId ? scored.filter((e) => e.regionId === cfg.regionId) : scored;
+  const eligible = cfg.focusAttr
+    ? scored.filter((e) => sourceOf.get(e.id)!.hasAttribute(cfg.focusAttr!))
+    : cfg.regionId
+      ? scored.filter((e) => e.regionId === cfg.regionId)
+      : scored;
   eligible.sort((a, b) => a.priority - b.priority || a.box.y - b.box.y || a.box.x - b.box.x);
   const offset = cfg.offset ?? 0;
   const page = eligible.slice(offset, offset + cfg.maxElements);

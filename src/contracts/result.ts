@@ -106,9 +106,18 @@ export const ExecutionResult = z
           .strict(),
       )
       .default([]),
-    /** Replay-time drift: the app moved under a working artifact. */
+    /**
+     * Replay-time drift: the app moved under a working artifact. `score` is the
+     * share of steps that drifted either way -- resolved below rank 1, or
+     * resolved to an element whose fingerprint differs from discovery's --
+     * counting a step once if it did both: |union of the two lists| / steps.
+     */
     drift: z
-      .object({ stepsResolvedBelowRank1: z.array(z.string()), score: z.number().min(0).max(1) })
+      .object({
+        stepsResolvedBelowRank1: z.array(z.string()),
+        fingerprintMismatches: z.array(z.string()).default([]),
+        score: z.number().min(0).max(1),
+      })
       .strict(),
     budgets: Budgets,
     control: z

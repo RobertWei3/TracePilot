@@ -9,7 +9,7 @@ import type {
 } from "../contracts/index.js";
 import { ExecutionResult as ResultSchema } from "../contracts/index.js";
 import { SafetyViolation, redact } from "../safety/index.js";
-import { LoadError, summarize, type Surface } from "../browser/index.js";
+import { LoadError, fingerprint, summarize, type Surface } from "../browser/index.js";
 import type { BudgetLedger, RunStore } from "../observability/index.js";
 import type { ControlLedger, OperatorConsole } from "../handoff/index.js";
 import { chooseRewind } from "./rewind.js";
@@ -95,6 +95,8 @@ class Escalate extends Error {
 export class ReplayExecutor {
   private readonly recoveries: Recovery[] = [];
   private readonly driftSteps: string[] = [];
+  /** Steps whose target no longer looks the way discovery recorded it. */
+  private readonly fingerprintMismatches = new Set<string>();
   private readonly approvals: ExecutionResult["approvals"] = [];
   private readonly usedRecovery = { transient: 0, reload: 0, relogin: 0 };
   private readonly outputs: Record<string, string> = {};
@@ -295,6 +297,9 @@ export class ReplayExecutor {
       return; // The wait and the checks below carry the whole meaning.
     }
 
+    // Checked before acting: once a click lands, the element it was may be gone.
+    await this.compareFingerprint(step);
+
     if (step.action === "extract") {
       const text = await surface.textOf(step.target!);
       if (text === null) {
@@ -361,6 +366,44 @@ export class ReplayExecutor {
       resolvedRank: attempt.rank,
       resolvedStrategy: attempt.strategy,
       url: surface.currentUrl(),
+    });
+  }
+
+  /**
+   * A warning, not a failure. A locator can still resolve at rank 1 after the
+   * element was renamed, or resolve structurally to the wrong element; a
+   * fingerprint taken the same way discovery took it shows either. The step
+   * carries on regardless -- whether the run worked is for the checks to say.
+   *
+   * The capability's appFingerprint is not compared: it is a hash of every
+   * step's fingerprint, so it differs exactly when one of these does and says
+   * nothing more.
+   */
+  private async compareFingerprint(step: Step): Promise<void> {
+    if (!step.target || !step.surfaceFingerprint) return;
+    if (!/^sha256:[0-9a-f]{16}$/.test(step.surfaceFingerprint)) {
+      // Damaged in storage: redaction tags an input value wherever it occurs
+      // when a record is written, and a hash's hex can contain one. It can
+      // never match, so it is not compared -- and not silently either.
+      this.o.store.event({
+        type: "fingerprint_unverifiable",
+        actor: "AGENT",
+        stepId: step.stepId,
+        reason: "the recorded fingerprint is not a well-formed hash",
+      });
+      return;
+    }
+    const live = await this.o.surface.describeResolved(step.target);
+    if (!live) return; // Unresolved: the action itself will report that.
+    const observed = fingerprint(live);
+    if (observed === step.surfaceFingerprint || this.fingerprintMismatches.has(step.stepId)) return;
+    this.fingerprintMismatches.add(step.stepId);
+    this.o.store.event({
+      type: "fingerprint_mismatch",
+      actor: "AGENT",
+      stepId: step.stepId,
+      expected: step.surfaceFingerprint,
+      observed,
     });
   }
 
@@ -1056,7 +1099,8 @@ export class ReplayExecutor {
       recoveries: this.recoveries,
       drift: {
         stepsResolvedBelowRank1: this.driftSteps,
-        score: Number((this.driftSteps.length / total).toFixed(3)),
+        fingerprintMismatches: [...this.fingerprintMismatches],
+        score: Number((new Set([...this.driftSteps, ...this.fingerprintMismatches]).size / total).toFixed(3)),
       },
       budgets: this.o.budgets.snapshot(),
       control: this.o.control.transitions,

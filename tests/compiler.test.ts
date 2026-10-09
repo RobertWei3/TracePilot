@@ -63,6 +63,18 @@ test("the approval gate lists the address fields and not the search box", () => 
   assert.ok(oracleRefs.every((r) => compiledRefs.includes(r)), `oracle refers to ${oracleRefs}, compiled to ${compiledRefs}`);
 });
 
+test("a fingerprint taken over an issued value is not carried into the capability", () => {
+  const { capability } = compile(trace, task, OPTS);
+  // The extract target was named by the confirmation id this run was issued,
+  // so its fingerprint can never hold on another run.
+  const extract = capability.steps.find((s) => s.action === "extract")!;
+  assert.ok(trace.steps.find((s) => s.action === "extract")!.surfaceFingerprint, "the trace should record one");
+  assert.equal(extract.surfaceFingerprint, undefined);
+  // Every other targeted step keeps the one discovery recorded.
+  const kept = capability.steps.filter((s) => s.target && s.action !== "extract");
+  assert.ok(kept.length > 0 && kept.every((s) => /^sha256:[0-9a-f]{16}$/.test(s.surfaceFingerprint ?? "")));
+});
+
 test("URLs become parameterized patterns, cut open where an issued value was", () => {
   const { capability } = compile(trace, task, OPTS);
   const pre = capability.steps.flatMap((s) => s.precondition.map((c) => c.pattern));

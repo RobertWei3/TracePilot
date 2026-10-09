@@ -152,6 +152,9 @@ function printResult(result: ExecutionResult): void {
       result.businessOutcome ? `business  : ${result.businessOutcome.code}` : "",
       `budgets   : ${result.budgets.actionSteps} steps | ${result.budgets.observations} observations | ${result.budgets.modelCalls} model calls`,
       `fragility : ${result.drift.stepsResolvedBelowRank1.length} step(s) below rank 1 (${result.drift.score.toFixed(2)})`,
+      result.drift.fingerprintMismatches.length
+        ? `drift     : ${result.drift.fingerprintMismatches.length} step(s) no longer match their fingerprint: ${result.drift.fingerprintMismatches.join(", ")}`
+        : "",
       `evidence  : ${result.evidenceDir}`,
       line,
     ]
