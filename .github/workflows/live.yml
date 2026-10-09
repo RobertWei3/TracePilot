@@ -33,7 +33,7 @@ jobs:
         id: playwright
         run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
@@ -45,7 +45,7 @@ jobs:
       # Run records are redacted when written: inputs are tagged, registered
       # secrets are masked, and screenshots are masked or omitted.
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: live-runs
           path: runs/
