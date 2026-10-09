@@ -826,7 +826,7 @@ export class DiscoveryExecutor {
    * written is not.
    */
   private submittableFills(): PendingFill[] {
-    return this.pendingFills.filter((f) => !f.submitTarget || isMutating(f.submitTarget));
+    return this.pendingFills.filter((f) => f.submitTarget === null || isMutating(f.submitTarget));
   }
 
   /** The gate as a step, so a compiled capability carries it too. */
