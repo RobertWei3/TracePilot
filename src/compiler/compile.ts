@@ -1,6 +1,7 @@
 import {
   Capability,
   SCHEMA_VERSION,
+  fingerprintText,
   type Check,
   type Descriptor,
   type DiscoveryTrace,
@@ -152,7 +153,10 @@ export function compile(trace: DiscoveryTrace, task: TaskContract, o: CompileOpt
       diffFields: t.diffFields,
       authoredBy: t.authoredBy,
       unresolved: t.unresolved || (t.target !== undefined && target === undefined),
-      surfaceFingerprint: t.surfaceFingerprint,
+      // A fingerprint hashed over text this run was issued -- the extract
+      // target named by its confirmation id -- differs on every other run, so
+      // replay would report drift that is not there.
+      surfaceFingerprint: fingerprintNamesIssued(t.target, issued) ? undefined : t.surfaceFingerprint,
       reason: t.reason,
     });
     steps.push(step);
@@ -427,6 +431,11 @@ function fixedPrefix(value: string): string {
 
 function mentions(text: string | undefined, issued: string[]): boolean {
   return text !== undefined && issued.some((v) => text.includes(v));
+}
+
+/** Whether any text a surface fingerprint is hashed over carries an issued value. */
+function fingerprintNamesIssued(d: Descriptor | undefined, issued: string[]): boolean {
+  return d !== undefined && fingerprintText(d).some((text) => mentions(text, issued));
 }
 
 /**

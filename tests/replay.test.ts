@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chooseRewind, loadCapability, replay } from "../src/replay/index.js";
 import { compile } from "../src/compiler/index.js";
-import { DiscoveryTrace, TaskContract } from "../src/contracts/index.js";
+import { DiscoveryTrace, FINGERPRINT_PATTERN, TaskContract, type Capability } from "../src/contracts/index.js";
 import { freePort, startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
+import { Surface } from "../src/browser/index.js";
 
 const FIXTURE = "tests/fixtures/update_mailing_address.v1.json";
 
@@ -322,6 +323,179 @@ test("drift is reported when a step resolves through a weaker strategy", async (
   assert.ok(result.drift.stepsResolvedBelowRank1.includes("s03"));
   assert.ok(result.drift.score > 0);
   assert.ok(result.recoveries.some((r) => r.kind === "candidate_fallthrough"));
+});
+
+/** The run's event log, parsed. */
+function eventsOf(dir: string): Record<string, string>[] {
+  return readFileSync(path.join(dir, "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+}
+
+/** A capability compiled from a real discovery run, so its steps carry real fingerprints. */
+function discovered(): Capability {
+  const trace = DiscoveryTrace.parse(
+    JSON.parse(readFileSync("tests/fixtures/update_mailing_address.trace.json", "utf8")),
+  );
+  const task = TaskContract.parse(JSON.parse(readFileSync("tasks/update-mailing-address.json", "utf8")));
+  return compile(trace, task, { version: 1, createdAt: "2026-10-06T00:00:00.000Z" }).capability;
+}
+
+test("an unchanged application shows no fingerprint drift, for any member", async () => {
+  // The oracle is hand-written and carries no fingerprints, so it can only
+  // show that their absence is not reported.
+  await app.reset();
+  const oracle = await run("values/member-1002.json");
+  assert.deepEqual(oracle.drift.fingerprintMismatches, []);
+
+  // The real guard: fingerprints recorded by discovery, replayed for the member
+  // it ran for and for another, whose ids and headings differ.
+  const capability = discovered();
+  assert.ok(capability.steps.filter((s) => s.surfaceFingerprint).length >= 10);
+  for (const values of ["values/member-1002.json", "values/member-1007.json"]) {
+    await app.reset();
+    const result = await run(values, { capability });
+    assert.equal(result.outcome, "success", `${values}: ${JSON.stringify(result.failure)}`);
+    assert.deepEqual(result.drift.fingerprintMismatches, [], values);
+    assert.equal(result.drift.score, 0, values);
+    // Every fingerprint was actually compared, not quietly set aside.
+    const unverified = eventsOf(result.evidenceDir).filter((e) => e.type === "fingerprint_unverifiable");
+    assert.deepEqual(unverified, [], values);
+  }
+});
+
+test("a target that no longer matches its fingerprint is reported, and the run carries on", async () => {
+  await app.reset();
+  const capability = discovered();
+  const step = capability.steps.find((s) => s.action === "click" && s.surfaceFingerprint)!;
+  step.surfaceFingerprint = "sha256:ffffffffffffffff";
+
+  const result = await run("values/member-1002.json", { capability });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  assert.deepEqual(result.drift.fingerprintMismatches, [step.stepId]);
+  assert.equal(result.drift.score, Number((1 / capability.steps.length).toFixed(3)));
+  const events = eventsOf(result.evidenceDir);
+  const mismatch = events.find((e) => e.type === "fingerprint_mismatch")!;
+  assert.equal(mismatch.stepId, step.stepId);
+  assert.equal(mismatch.expected, "sha256:ffffffffffffffff");
+  assert.match(mismatch.observed!, FINGERPRINT_PATTERN, "only a hash, never descriptor text");
+});
+
+test("a fingerprint damaged in storage is skipped rather than reported", async () => {
+  // Redaction tags input values wherever they appear when a record is written,
+  // and a hash's hex can contain one: evidence 03 holds
+  // "sha256:cc48c156d1d<input:address.zip>". It can never match, and says so.
+  await app.reset();
+  const capability = discovered();
+  const step = capability.steps.find((s) => s.action === "click" && s.surfaceFingerprint)!;
+  step.surfaceFingerprint = "sha256:cc48c156d1d<input:address.zip>";
+
+  const result = await run("values/member-1002.json", { capability });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  assert.deepEqual(result.drift.fingerprintMismatches, []);
+  const events = eventsOf(result.evidenceDir);
+  assert.ok(events.some((e) => e.type === "fingerprint_unverifiable" && e.stepId === step.stepId));
+});
+
+test("a target the observer does not report is noted, not compared", async () => {
+  // A bare caption div resolves through a structural path, but the observer
+  // only reports controls, headings and cells -- so there is no fingerprint to
+  // take, the same as there was none for discovery to record.
+  await app.reset();
+  const capability = discovered();
+  const at = capability.steps.findIndex((s) => s.action === "fill");
+  const fill = capability.steps[at]!;
+  capability.steps.splice(at + 1, 0, {
+    ...structuredClone(fill),
+    stepId: "s02-caption",
+    action: "click",
+    value: undefined,
+    checks: [],
+    waitFor: undefined,
+    target: {
+      role: "generic",
+      tagName: "div",
+      candidates: [{ rank: 1, strategy: "structural", expr: "form > div.fieldrow > div" }],
+    },
+    surfaceFingerprint: "sha256:ffffffffffffffff",
+  });
+
+  const result = await run("values/member-1002.json", { capability });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  assert.deepEqual(result.drift.fingerprintMismatches, []);
+  const noted = eventsOf(result.evidenceDir).find((e) => e.type === "fingerprint_unverifiable");
+  assert.equal(noted?.stepId, "s02-caption");
+  assert.match(noted!.reason!, /observer does not report it/);
+});
+
+test("a target that resolves only in time for the action is noted as uncompared", async () => {
+  // Stands in for an element that appears after the fingerprint was taken but
+  // before the action gave up -- a timing that cannot be produced reliably.
+  await app.reset();
+  const real = Surface.prototype.describeResolved;
+  let first = true;
+  Surface.prototype.describeResolved = async function (this: Surface, d) {
+    if (first) {
+      first = false;
+      return { resolved: false };
+    }
+    return real.call(this, d);
+  };
+  try {
+    const capability = discovered();
+    const step = capability.steps.find((s) => s.target && s.surfaceFingerprint)!;
+    const result = await run("values/member-1002.json", { capability });
+
+    assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+    const noted = eventsOf(result.evidenceDir).filter((e) => e.type === "fingerprint_unverifiable");
+    assert.deepEqual(noted.map((e) => e.stepId), [step.stepId]);
+    assert.match(noted[0]!.reason!, /had not resolved/);
+    assert.deepEqual(result.drift.fingerprintMismatches, []);
+  } finally {
+    Surface.prototype.describeResolved = real;
+  }
+});
+
+test("a target that appears on the action's retry is compared on that attempt", async () => {
+  // The first attempt finds nothing to fingerprint and nothing to act on; the
+  // retry finds both. The fingerprint is taken with the attempt that works.
+  await app.reset();
+  const realDescribe = Surface.prototype.describeResolved;
+  const realAct = Surface.prototype.act;
+  let missDescribe = true;
+  let missAct = true;
+  Surface.prototype.describeResolved = async function (this: Surface, d) {
+    if (missDescribe) {
+      missDescribe = false;
+      return { resolved: false };
+    }
+    return realDescribe.call(this, d);
+  };
+  Surface.prototype.act = async function (this: Surface, action, d, literal) {
+    if (missAct) {
+      missAct = false;
+      return { ok: false, reason: "unresolved", tried: [], detail: "not there yet" };
+    }
+    return realAct.call(this, action, d, literal);
+  };
+  try {
+    const capability = discovered();
+    const step = capability.steps.find((s) => s.target && s.surfaceFingerprint)!;
+    const result = await run("values/member-1002.json", { capability });
+
+    assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+    assert.ok(result.recoveries.some((r) => r.stepId === step.stepId && r.kind === "transient_retry"));
+    const unverified = eventsOf(result.evidenceDir).filter((e) => e.type === "fingerprint_unverifiable");
+    assert.deepEqual(unverified, [], "the retry was compared, so nothing is left unverified");
+    assert.deepEqual(result.drift.fingerprintMismatches, []);
+  } finally {
+    Surface.prototype.describeResolved = realDescribe;
+    Surface.prototype.act = realAct;
+  }
 });
 
 test("a run refused by the safety policy is a safety violation, not a failure", async () => {

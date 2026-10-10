@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CompileError, compile, urlPattern } from "../src/compiler/index.js";
-import { DiscoveryTrace, TaskContract, type Capability, type Check, type ValueRef } from "../src/contracts/index.js";
+import { DiscoveryTrace, FINGERPRINT_PATTERN, TaskContract, type Capability, type Check, type ValueRef } from "../src/contracts/index.js";
 import { loadCapability } from "../src/replay/index.js";
 
 const trace = DiscoveryTrace.parse(
@@ -61,6 +61,18 @@ test("the approval gate lists the address fields and not the search box", () => 
   const compiledRefs = fields.flatMap((f) => refs(f.value));
   assert.ok(compiledRefs.every((r) => r.startsWith("address.")), JSON.stringify(compiledRefs));
   assert.ok(oracleRefs.every((r) => compiledRefs.includes(r)), `oracle refers to ${oracleRefs}, compiled to ${compiledRefs}`);
+});
+
+test("a fingerprint taken over an issued value is not carried into the capability", () => {
+  const { capability } = compile(trace, task, OPTS);
+  // The extract target was named by the confirmation id this run was issued,
+  // so its fingerprint can never hold on another run.
+  const extract = capability.steps.find((s) => s.action === "extract")!;
+  assert.ok(trace.steps.find((s) => s.action === "extract")!.surfaceFingerprint, "the trace should record one");
+  assert.equal(extract.surfaceFingerprint, undefined);
+  // Every other targeted step keeps the one discovery recorded.
+  const kept = capability.steps.filter((s) => s.target && s.action !== "extract");
+  assert.ok(kept.length > 0 && kept.every((s) => FINGERPRINT_PATTERN.test(s.surfaceFingerprint ?? "")));
 });
 
 test("URLs become parameterized patterns, cut open where an issued value was", () => {

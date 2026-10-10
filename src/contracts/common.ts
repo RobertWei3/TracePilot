@@ -121,6 +121,18 @@ export const Descriptor = z
   .strict();
 export type Descriptor = z.infer<typeof Descriptor>;
 
+/**
+ * The page text a surface fingerprint is hashed over, after role and tag.
+ * Shared by the hash itself (browser/descriptor.ts) and by the compiler, which
+ * has to know when that text names a value the run was issued.
+ */
+export function fingerprintText(d: Descriptor): string[] {
+  return [d.accessibleName ?? "", d.labelText ?? "", d.scope?.containerName ?? ""];
+}
+
+/** A well-formed surface fingerprint, exactly as browser/descriptor.ts emits it. */
+export const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{16}$/;
+
 /** Typed declaration of one input or output field. */
 export const FieldSpec: z.ZodTypeAny = z.lazy(() =>
   z

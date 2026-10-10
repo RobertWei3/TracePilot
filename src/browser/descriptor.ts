@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Locator, Page } from "playwright";
-import type { Descriptor, LocatorCandidate } from "../contracts/index.js";
+import { fingerprintText, type Descriptor, type LocatorCandidate } from "../contracts/index.js";
 import type { ObservedElement } from "./observe.js";
 
 /**
@@ -64,15 +64,13 @@ export function describe(
   };
 }
 
-/** Stable hash of the descriptor's identifying neighbourhood, for drift detection. */
+/**
+ * Stable hash of the descriptor's identifying neighbourhood, for drift
+ * detection. Its shape is FINGERPRINT_PATTERN in contracts/; the two change
+ * together.
+ */
 export function fingerprint(d: Descriptor): string {
-  const material = [
-    d.role,
-    d.tagName,
-    d.accessibleName ?? "",
-    d.labelText ?? "",
-    d.scope?.containerName ?? "",
-  ].join(" ");
+  const material = [d.role, d.tagName, ...fingerprintText(d)].join(" ");
   return "sha256:" + createHash("sha256").update(material).digest("hex").slice(0, 16);
 }
 
