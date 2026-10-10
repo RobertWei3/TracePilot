@@ -454,8 +454,47 @@ test("a target that resolves only in time for the action is noted as uncompared"
     const noted = eventsOf(result.evidenceDir).filter((e) => e.type === "fingerprint_unverifiable");
     assert.deepEqual(noted.map((e) => e.stepId), [step.stepId]);
     assert.match(noted[0]!.reason!, /had not resolved/);
+    assert.deepEqual(result.drift.fingerprintMismatches, []);
   } finally {
     Surface.prototype.describeResolved = real;
+  }
+});
+
+test("a target that appears on the action's retry is compared on that attempt", async () => {
+  // The first attempt finds nothing to fingerprint and nothing to act on; the
+  // retry finds both. The fingerprint is taken with the attempt that works.
+  await app.reset();
+  const realDescribe = Surface.prototype.describeResolved;
+  const realAct = Surface.prototype.act;
+  let missDescribe = true;
+  let missAct = true;
+  Surface.prototype.describeResolved = async function (this: Surface, d) {
+    if (missDescribe) {
+      missDescribe = false;
+      return { resolved: false };
+    }
+    return realDescribe.call(this, d);
+  };
+  Surface.prototype.act = async function (this: Surface, action, d, literal) {
+    if (missAct) {
+      missAct = false;
+      return { ok: false, reason: "unresolved", tried: [], detail: "not there yet" };
+    }
+    return realAct.call(this, action, d, literal);
+  };
+  try {
+    const capability = discovered();
+    const step = capability.steps.find((s) => s.target && s.surfaceFingerprint)!;
+    const result = await run("values/member-1002.json", { capability });
+
+    assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+    assert.ok(result.recoveries.some((r) => r.stepId === step.stepId && r.kind === "transient_retry"));
+    const unverified = eventsOf(result.evidenceDir).filter((e) => e.type === "fingerprint_unverifiable");
+    assert.deepEqual(unverified, [], "the retry was compared, so nothing is left unverified");
+    assert.deepEqual(result.drift.fingerprintMismatches, []);
+  } finally {
+    Surface.prototype.describeResolved = realDescribe;
+    Surface.prototype.act = realAct;
   }
 });
 

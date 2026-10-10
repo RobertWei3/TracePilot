@@ -42,6 +42,9 @@ export type ReplayOptions = {
 
 type Recovery = ExecutionResult["recoveries"][number];
 
+/** See ReplayExecutor.compareFingerprint. */
+type Fingerprinted = "settled" | "unresolved";
+
 /** Stands in for a step id where something happened before any step, or outside one. */
 const RUN_LEVEL = "(run)";
 
@@ -97,6 +100,11 @@ export class ReplayExecutor {
   private readonly driftSteps: string[] = [];
   /** Steps whose target no longer looks the way discovery recorded it. */
   private readonly fingerprintMismatches = new Set<string>();
+  /**
+   * Steps whose fingerprint has had its one answer -- compared, or noted as
+   * impossible to compare. A step run again after a rewind adds nothing.
+   */
+  private readonly fingerprintSettled = new Set<string>();
   private readonly approvals: ExecutionResult["approvals"] = [];
   private readonly usedRecovery = { transient: 0, reload: 0, relogin: 0 };
   private readonly outputs: Record<string, string> = {};
@@ -297,15 +305,9 @@ export class ReplayExecutor {
       return; // The wait and the checks below carry the whole meaning.
     }
 
-    // Checked before acting: once a click lands, the element it was may be gone.
-    const notYetResolved = await this.compareFingerprint(step);
-    // The comparison is not retried with the action. If the target appeared
-    // only in time for the action, the step went uncompared, and says so.
-    const noteIfUncompared = () => {
-      if (notYetResolved) this.noteUnverifiable(step, "the target had not resolved when its fingerprint was taken");
-    };
-
     if (step.action === "extract") {
+      // Taken before reading; an extract has no retry to fold it into.
+      const fingerprinted = await this.compareFingerprint(step);
       const text = await surface.textOf(step.target!);
       if (text === null) {
         throw new Terminal("failure", "TARGET_UNRESOLVED", {
@@ -334,15 +336,20 @@ export class ReplayExecutor {
         stepId: step.stepId,
         reason: `bound ${step.extractAs}`,
       });
-      noteIfUncompared();
+      this.noteIfUncompared(step, fingerprinted);
       return;
     }
 
     // click / fill / select / press
     const literal = step.value ? this.resolve(step.value) : undefined;
-    const attempt = await this.withTransientRecovery(step, () =>
-      surface.act(step.action as "click" | "fill" | "select" | "press", step.target!, literal),
-    );
+    // The fingerprint is taken inside each attempt, before acting -- once a
+    // click lands, the element may be gone -- so the attempt that succeeds is
+    // the one compared, even when the target appeared only on a retry.
+    let fingerprinted: Fingerprinted = "unresolved";
+    const attempt = await this.withTransientRecovery(step, async () => {
+      if (fingerprinted === "unresolved") fingerprinted = await this.compareFingerprint(step);
+      return surface.act(step.action as "click" | "fill" | "select" | "press", step.target!, literal);
+    });
 
     if (!attempt.ok) {
       throw await this.divergence(
@@ -352,7 +359,7 @@ export class ReplayExecutor {
         attempt.reason === "unresolved" ? "TARGET_UNRESOLVED" : "TIMEOUT",
       );
     }
-    noteIfUncompared();
+    this.noteIfUncompared(step, fingerprinted);
 
     if (attempt.rank > 1) {
       // The artifact still works, but it worked through a weaker strategy --
@@ -385,25 +392,29 @@ export class ReplayExecutor {
    * The capability's appFingerprint is not compared: it is a hash of every
    * step's fingerprint, so it differs exactly when one of these does and says
    * nothing more.
+   *
+   * "unresolved" means the target could not be found yet, so the caller may
+   * try again with its next attempt; "settled" means the step needs nothing
+   * more -- it was compared, could never be, or has no fingerprint.
    */
-  /** Returns true when the target did not resolve, so nothing could be compared yet. */
-  private async compareFingerprint(step: Step): Promise<boolean> {
-    if (!step.target || !step.surfaceFingerprint) return false;
+  private async compareFingerprint(step: Step): Promise<Fingerprinted> {
+    if (!step.target || !step.surfaceFingerprint || this.fingerprintSettled.has(step.stepId)) return "settled";
     if (!FINGERPRINT_PATTERN.test(step.surfaceFingerprint)) {
       // Damaged in storage: redaction tags an input value wherever it occurs
       // when a record is written, and a hash's hex can contain one. It can
       // never match, so it is not compared -- and not silently either.
       this.noteUnverifiable(step, "the recorded fingerprint is not a well-formed hash");
-      return false;
+      return "settled";
     }
     const live = await this.o.surface.describeResolved(step.target);
-    if (!live.resolved) return true;
+    if (!live.resolved) return "unresolved";
     if (!live.descriptor) {
       this.noteUnverifiable(step, "the target resolved, but the observer does not report it");
-      return false;
+      return "settled";
     }
+    this.fingerprintSettled.add(step.stepId);
     const observed = fingerprint(live.descriptor);
-    if (observed === step.surfaceFingerprint || this.fingerprintMismatches.has(step.stepId)) return false;
+    if (observed === step.surfaceFingerprint) return "settled";
     this.fingerprintMismatches.add(step.stepId);
     this.o.store.event({
       type: "fingerprint_mismatch",
@@ -412,10 +423,23 @@ export class ReplayExecutor {
       expected: step.surfaceFingerprint,
       observed,
     });
-    return false;
+    return "settled";
+  }
+
+  /**
+   * After an action that succeeded: a target that never resolved for the
+   * fingerprint, yet did for the action, appeared in between. Rare, and
+   * recorded rather than passed over.
+   */
+  private noteIfUncompared(step: Step, fingerprinted: Fingerprinted): void {
+    if (fingerprinted === "unresolved" && step.target && step.surfaceFingerprint) {
+      this.noteUnverifiable(step, "the target had not resolved when its fingerprint was taken");
+    }
   }
 
   private noteUnverifiable(step: Step, reason: string): void {
+    if (this.fingerprintSettled.has(step.stepId)) return;
+    this.fingerprintSettled.add(step.stepId);
     this.o.store.event({ type: "fingerprint_unverifiable", actor: "AGENT", stepId: step.stepId, reason });
   }
 

@@ -238,6 +238,9 @@ export class Surface {
    * `descriptor` is null when the element resolves but the observer does not
    * report it -- it sits in an omitted region, say -- so there is nothing it
    * could have recorded either.
+   *
+   * It resolves `d` itself, separately from act(): one more lookup per step,
+   * kept apart so act() needs no knowledge of fingerprints.
    */
   async describeResolved(
     d: Descriptor,
