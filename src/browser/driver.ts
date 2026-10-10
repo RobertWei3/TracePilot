@@ -234,19 +234,22 @@ export class Surface {
   /**
    * Describes the element `d` resolves to as it is now, built the way
    * discovery built its descriptors: through the observation builder, so the
-   * text is tagged and redacted in the page exactly as it was then. Null when
-   * nothing unique resolves, or the observer would not report the element (an
-   * omitted region, say) -- either way there is nothing to compare.
+   * text is tagged and redacted in the page exactly as it was then.
+   * `descriptor` is null when the element resolves but the observer does not
+   * report it -- it sits in an omitted region, say -- so there is nothing it
+   * could have recorded either.
    */
-  async describeResolved(d: Descriptor): Promise<Descriptor | null> {
+  async describeResolved(
+    d: Descriptor,
+  ): Promise<{ resolved: false } | { resolved: true; descriptor: Descriptor | null }> {
     const res = await this.locate(d);
-    if (!res.ok) return null;
+    if (!res.ok) return { resolved: false };
     const attr = "data-tp-focus";
     await res.locator.evaluate((el, a) => el.setAttribute(a, ""), attr);
     try {
       const obs = await this.observe({ focusAttr: attr });
       const el = obs.elements[0];
-      return el ? describe(el) : null;
+      return { resolved: true, descriptor: el ? describe(el) : null };
     } finally {
       await res.locator.evaluate((el, a) => el.removeAttribute(a), attr).catch(() => {});
       await this.clearRedactionMarks();

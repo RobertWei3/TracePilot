@@ -68,7 +68,7 @@ In evidence 08 the repository owner did this by hand: replay handed over at a re
 
 ## Cuts
 
-- **Fingerprints warn; they do not stop a run.** Replay compares each step's surface fingerprint with the live element and lists mismatches in `drift.fingerprintMismatches`, but the step carries on: the checks decide whether the run worked. The capability's `appFingerprint` is not compared, since it changes exactly when a step's does.
+- **Fingerprints warn; they do not stop a run.** Replay compares each step's surface fingerprint with the live element and lists mismatches in `drift.fingerprintMismatches`, but the step carries on: the checks decide whether the run worked. The capability's `appFingerprint` is not compared, since it changes exactly when a step's does. A step whose fingerprint was hashed over a value the run was issued, such as the extract that reads the confirmation id, carries none and is not compared.
 - **Multi-tenant and desktop are designed, not built.** `tenantId`, `overrides` and `surfaceKind` are validated but unused. There is one browser target.
 - **Business outcomes are learned from source runs only.** A capability knows only the outcomes its source runs met. An unseen "no" replays as a failure, then a hand-over.
 - **Template splitting is a heuristic.** It splits at commas, which suits list-shaped text.

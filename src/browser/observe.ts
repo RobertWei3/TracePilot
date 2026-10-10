@@ -472,11 +472,10 @@ export function buildObservation(cfg: ObserveConfig): Observation {
   // exactly what the text channel hid. The caller strips it after capture.
   for (const el of redactedEls) el.setAttribute("data-tp-redacted", "");
 
-  const eligible = cfg.focusAttr
-    ? scored.filter((e) => sourceOf.get(e.id)!.hasAttribute(cfg.focusAttr!))
-    : cfg.regionId
-      ? scored.filter((e) => e.regionId === cfg.regionId)
-      : scored;
+  const focusAttr = cfg.focusAttr;
+  let eligible = scored;
+  if (focusAttr) eligible = scored.filter((e) => sourceOf.get(e.id)?.hasAttribute(focusAttr));
+  else if (cfg.regionId) eligible = scored.filter((e) => e.regionId === cfg.regionId);
   eligible.sort((a, b) => a.priority - b.priority || a.box.y - b.box.y || a.box.x - b.box.x);
   const offset = cfg.offset ?? 0;
   const page = eligible.slice(offset, offset + cfg.maxElements);

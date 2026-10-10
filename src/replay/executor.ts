@@ -7,7 +7,7 @@ import type {
   Step,
   ValueRef,
 } from "../contracts/index.js";
-import { ExecutionResult as ResultSchema } from "../contracts/index.js";
+import { ExecutionResult as ResultSchema, FINGERPRINT_PATTERN } from "../contracts/index.js";
 import { SafetyViolation, redact } from "../safety/index.js";
 import { LoadError, fingerprint, summarize, type Surface } from "../browser/index.js";
 import type { BudgetLedger, RunStore } from "../observability/index.js";
@@ -381,21 +381,22 @@ export class ReplayExecutor {
    */
   private async compareFingerprint(step: Step): Promise<void> {
     if (!step.target || !step.surfaceFingerprint) return;
-    if (!/^sha256:[0-9a-f]{16}$/.test(step.surfaceFingerprint)) {
+    const unverifiable = (reason: string) =>
+      this.o.store.event({ type: "fingerprint_unverifiable", actor: "AGENT", stepId: step.stepId, reason });
+    if (!FINGERPRINT_PATTERN.test(step.surfaceFingerprint)) {
       // Damaged in storage: redaction tags an input value wherever it occurs
       // when a record is written, and a hash's hex can contain one. It can
       // never match, so it is not compared -- and not silently either.
-      this.o.store.event({
-        type: "fingerprint_unverifiable",
-        actor: "AGENT",
-        stepId: step.stepId,
-        reason: "the recorded fingerprint is not a well-formed hash",
-      });
+      unverifiable("the recorded fingerprint is not a well-formed hash");
       return;
     }
     const live = await this.o.surface.describeResolved(step.target);
-    if (!live) return; // Unresolved: the action itself will report that.
-    const observed = fingerprint(live);
+    if (!live.resolved) return; // The action itself will report that.
+    if (!live.descriptor) {
+      unverifiable("the target resolved, but the observer does not report it");
+      return;
+    }
+    const observed = fingerprint(live.descriptor);
     if (observed === step.surfaceFingerprint || this.fingerprintMismatches.has(step.stepId)) return;
     this.fingerprintMismatches.add(step.stepId);
     this.o.store.event({

@@ -1,6 +1,7 @@
 import {
   Capability,
   SCHEMA_VERSION,
+  fingerprintText,
   type Check,
   type Descriptor,
   type DiscoveryTrace,
@@ -432,10 +433,9 @@ function mentions(text: string | undefined, issued: string[]): boolean {
   return text !== undefined && issued.some((v) => text.includes(v));
 }
 
-/** Whether any field a surface fingerprint is hashed from carries an issued value. */
+/** Whether any text a surface fingerprint is hashed over carries an issued value. */
 function fingerprintNamesIssued(d: Descriptor | undefined, issued: string[]): boolean {
-  if (!d) return false;
-  return [d.accessibleName, d.labelText, d.scope?.containerName].some((text) => mentions(text, issued));
+  return d !== undefined && fingerprintText(d).some((text) => mentions(text, issued));
 }
 
 /**

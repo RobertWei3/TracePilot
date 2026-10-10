@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chooseRewind, loadCapability, replay } from "../src/replay/index.js";
 import { compile } from "../src/compiler/index.js";
-import { DiscoveryTrace, TaskContract, type Capability } from "../src/contracts/index.js";
+import { DiscoveryTrace, FINGERPRINT_PATTERN, TaskContract, type Capability } from "../src/contracts/index.js";
 import { freePort, startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
 
 const FIXTURE = "tests/fixtures/update_mailing_address.v1.json";
@@ -324,6 +324,14 @@ test("drift is reported when a step resolves through a weaker strategy", async (
   assert.ok(result.recoveries.some((r) => r.kind === "candidate_fallthrough"));
 });
 
+/** The run's event log, parsed. */
+function eventsOf(dir: string): Record<string, string>[] {
+  return readFileSync(path.join(dir, "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+}
+
 /** A capability compiled from a real discovery run, so its steps carry real fingerprints. */
 function discovered(): Capability {
   const trace = DiscoveryTrace.parse(
@@ -364,14 +372,11 @@ test("a target that no longer matches its fingerprint is reported, and the run c
   assert.equal(result.outcome, "success", JSON.stringify(result.failure));
   assert.deepEqual(result.drift.fingerprintMismatches, [step.stepId]);
   assert.equal(result.drift.score, Number((1 / capability.steps.length).toFixed(3)));
-  const events = readFileSync(path.join(result.evidenceDir, "events.jsonl"), "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+  const events = eventsOf(result.evidenceDir);
   const mismatch = events.find((e) => e.type === "fingerprint_mismatch")!;
   assert.equal(mismatch.stepId, step.stepId);
   assert.equal(mismatch.expected, "sha256:ffffffffffffffff");
-  assert.match(mismatch.observed, /^sha256:[0-9a-f]{16}$/, "only a hash, never descriptor text");
+  assert.match(mismatch.observed!, FINGERPRINT_PATTERN, "only a hash, never descriptor text");
 });
 
 test("a fingerprint damaged in storage is skipped rather than reported", async () => {
@@ -387,11 +392,40 @@ test("a fingerprint damaged in storage is skipped rather than reported", async (
 
   assert.equal(result.outcome, "success", JSON.stringify(result.failure));
   assert.deepEqual(result.drift.fingerprintMismatches, []);
-  const events = readFileSync(path.join(result.evidenceDir, "events.jsonl"), "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+  const events = eventsOf(result.evidenceDir);
   assert.ok(events.some((e) => e.type === "fingerprint_unverifiable" && e.stepId === step.stepId));
+});
+
+test("a target the observer does not report is noted, not compared", async () => {
+  // A bare caption div resolves through a structural path, but the observer
+  // only reports controls, headings and cells -- so there is no fingerprint to
+  // take, the same as there was none for discovery to record.
+  await app.reset();
+  const capability = discovered();
+  const at = capability.steps.findIndex((s) => s.action === "fill");
+  const fill = capability.steps[at]!;
+  capability.steps.splice(at + 1, 0, {
+    ...structuredClone(fill),
+    stepId: "s02-caption",
+    action: "click",
+    value: undefined,
+    checks: [],
+    waitFor: undefined,
+    target: {
+      role: "generic",
+      tagName: "div",
+      candidates: [{ rank: 1, strategy: "structural", expr: "form > div.fieldrow > div" }],
+    },
+    surfaceFingerprint: "sha256:ffffffffffffffff",
+  });
+
+  const result = await run("values/member-1002.json", { capability });
+
+  assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+  assert.deepEqual(result.drift.fingerprintMismatches, []);
+  const noted = eventsOf(result.evidenceDir).find((e) => e.type === "fingerprint_unverifiable");
+  assert.equal(noted?.stepId, "s02-caption");
+  assert.match(noted!.reason!, /observer does not report it/);
 });
 
 test("a run refused by the safety policy is a safety violation, not a failure", async () => {

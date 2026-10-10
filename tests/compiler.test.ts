@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CompileError, compile, urlPattern } from "../src/compiler/index.js";
-import { DiscoveryTrace, TaskContract, type Capability, type Check, type ValueRef } from "../src/contracts/index.js";
+import { DiscoveryTrace, FINGERPRINT_PATTERN, TaskContract, type Capability, type Check, type ValueRef } from "../src/contracts/index.js";
 import { loadCapability } from "../src/replay/index.js";
 
 const trace = DiscoveryTrace.parse(
@@ -72,7 +72,7 @@ test("a fingerprint taken over an issued value is not carried into the capabilit
   assert.equal(extract.surfaceFingerprint, undefined);
   // Every other targeted step keeps the one discovery recorded.
   const kept = capability.steps.filter((s) => s.target && s.action !== "extract");
-  assert.ok(kept.length > 0 && kept.every((s) => /^sha256:[0-9a-f]{16}$/.test(s.surfaceFingerprint ?? "")));
+  assert.ok(kept.length > 0 && kept.every((s) => FINGERPRINT_PATTERN.test(s.surfaceFingerprint ?? "")));
 });
 
 test("URLs become parameterized patterns, cut open where an issued value was", () => {
