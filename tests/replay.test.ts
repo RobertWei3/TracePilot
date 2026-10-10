@@ -7,6 +7,7 @@ import { chooseRewind, loadCapability, replay } from "../src/replay/index.js";
 import { compile } from "../src/compiler/index.js";
 import { DiscoveryTrace, FINGERPRINT_PATTERN, TaskContract, type Capability } from "../src/contracts/index.js";
 import { freePort, startApp, OPERATOR_SECRETS, type TestApp } from "./helpers/app.js";
+import { Surface } from "../src/browser/index.js";
 
 const FIXTURE = "tests/fixtures/update_mailing_address.v1.json";
 
@@ -358,6 +359,9 @@ test("an unchanged application shows no fingerprint drift, for any member", asyn
     assert.equal(result.outcome, "success", `${values}: ${JSON.stringify(result.failure)}`);
     assert.deepEqual(result.drift.fingerprintMismatches, [], values);
     assert.equal(result.drift.score, 0, values);
+    // Every fingerprint was actually compared, not quietly set aside.
+    const unverified = eventsOf(result.evidenceDir).filter((e) => e.type === "fingerprint_unverifiable");
+    assert.deepEqual(unverified, [], values);
   }
 });
 
@@ -426,6 +430,33 @@ test("a target the observer does not report is noted, not compared", async () =>
   const noted = eventsOf(result.evidenceDir).find((e) => e.type === "fingerprint_unverifiable");
   assert.equal(noted?.stepId, "s02-caption");
   assert.match(noted!.reason!, /observer does not report it/);
+});
+
+test("a target that resolves only in time for the action is noted as uncompared", async () => {
+  // Stands in for an element that appears after the fingerprint was taken but
+  // before the action gave up -- a timing that cannot be produced reliably.
+  await app.reset();
+  const real = Surface.prototype.describeResolved;
+  let first = true;
+  Surface.prototype.describeResolved = async function (this: Surface, d) {
+    if (first) {
+      first = false;
+      return { resolved: false };
+    }
+    return real.call(this, d);
+  };
+  try {
+    const capability = discovered();
+    const step = capability.steps.find((s) => s.target && s.surfaceFingerprint)!;
+    const result = await run("values/member-1002.json", { capability });
+
+    assert.equal(result.outcome, "success", JSON.stringify(result.failure));
+    const noted = eventsOf(result.evidenceDir).filter((e) => e.type === "fingerprint_unverifiable");
+    assert.deepEqual(noted.map((e) => e.stepId), [step.stepId]);
+    assert.match(noted[0]!.reason!, /had not resolved/);
+  } finally {
+    Surface.prototype.describeResolved = real;
+  }
 });
 
 test("a run refused by the safety policy is a safety violation, not a failure", async () => {

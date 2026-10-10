@@ -298,7 +298,12 @@ export class ReplayExecutor {
     }
 
     // Checked before acting: once a click lands, the element it was may be gone.
-    await this.compareFingerprint(step);
+    const notYetResolved = await this.compareFingerprint(step);
+    // The comparison is not retried with the action. If the target appeared
+    // only in time for the action, the step went uncompared, and says so.
+    const noteIfUncompared = () => {
+      if (notYetResolved) this.noteUnverifiable(step, "the target had not resolved when its fingerprint was taken");
+    };
 
     if (step.action === "extract") {
       const text = await surface.textOf(step.target!);
@@ -329,6 +334,7 @@ export class ReplayExecutor {
         stepId: step.stepId,
         reason: `bound ${step.extractAs}`,
       });
+      noteIfUncompared();
       return;
     }
 
@@ -346,6 +352,7 @@ export class ReplayExecutor {
         attempt.reason === "unresolved" ? "TARGET_UNRESOLVED" : "TIMEOUT",
       );
     }
+    noteIfUncompared();
 
     if (attempt.rank > 1) {
       // The artifact still works, but it worked through a weaker strategy --
@@ -379,25 +386,24 @@ export class ReplayExecutor {
    * step's fingerprint, so it differs exactly when one of these does and says
    * nothing more.
    */
-  private async compareFingerprint(step: Step): Promise<void> {
-    if (!step.target || !step.surfaceFingerprint) return;
-    const unverifiable = (reason: string) =>
-      this.o.store.event({ type: "fingerprint_unverifiable", actor: "AGENT", stepId: step.stepId, reason });
+  /** Returns true when the target did not resolve, so nothing could be compared yet. */
+  private async compareFingerprint(step: Step): Promise<boolean> {
+    if (!step.target || !step.surfaceFingerprint) return false;
     if (!FINGERPRINT_PATTERN.test(step.surfaceFingerprint)) {
       // Damaged in storage: redaction tags an input value wherever it occurs
       // when a record is written, and a hash's hex can contain one. It can
       // never match, so it is not compared -- and not silently either.
-      unverifiable("the recorded fingerprint is not a well-formed hash");
-      return;
+      this.noteUnverifiable(step, "the recorded fingerprint is not a well-formed hash");
+      return false;
     }
     const live = await this.o.surface.describeResolved(step.target);
-    if (!live.resolved) return; // The action itself will report that.
+    if (!live.resolved) return true;
     if (!live.descriptor) {
-      unverifiable("the target resolved, but the observer does not report it");
-      return;
+      this.noteUnverifiable(step, "the target resolved, but the observer does not report it");
+      return false;
     }
     const observed = fingerprint(live.descriptor);
-    if (observed === step.surfaceFingerprint || this.fingerprintMismatches.has(step.stepId)) return;
+    if (observed === step.surfaceFingerprint || this.fingerprintMismatches.has(step.stepId)) return false;
     this.fingerprintMismatches.add(step.stepId);
     this.o.store.event({
       type: "fingerprint_mismatch",
@@ -406,6 +412,11 @@ export class ReplayExecutor {
       expected: step.surfaceFingerprint,
       observed,
     });
+    return false;
+  }
+
+  private noteUnverifiable(step: Step, reason: string): void {
+    this.o.store.event({ type: "fingerprint_unverifiable", actor: "AGENT", stepId: step.stepId, reason });
   }
 
   // --- gates, waits and guards -------------------------------------------
