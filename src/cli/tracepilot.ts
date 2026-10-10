@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { DiscoveryTrace, TaskContract, type ExecutionResult } from "../contracts/index.js";
+import { Capability, DiscoveryTrace, TaskContract, type ExecutionResult } from "../contracts/index.js";
 import { loadPolicy, registerSecret } from "../safety/index.js";
 import { Surface } from "../browser/index.js";
 import { BudgetLedger, RunStore } from "../observability/index.js";
@@ -9,11 +9,13 @@ import { flatten, type ApprovalMode, type ResolveContext } from "../workflow/ind
 import { DiscoveryExecutor, allowedActions, modelFromEnv } from "../discovery/index.js";
 import { CompileError, compile } from "../compiler/index.js";
 import { loadCapability, loadValues, operatorSecrets, replay } from "../replay/index.js";
+import { DiffError, diff, formatDiff, formatSummary, inspect } from "../inspect/index.js";
 
 /**
  * The entry point for the three halves of the loop: discover a workflow with a
  * model, compile the run into a capability, and replay that capability with no
- * model at all.
+ * model at all. Two read-only commands sit beside them: inspect a capability,
+ * and diff two versions of one.
  *
  * Its only job is wiring: it resolves the run's values and credentials, opens
  * one browser, and hands the executors the components they do not own.
@@ -26,6 +28,8 @@ function usage(): never {
       "usage: npm run tp -- discover --task <file> --values <file> [options]",
       "       npm run tp -- compile  --run <dir> --task <file> [--outcomes <dir>,...] [--out <dir>]",
       "       npm run tp -- replay   --capability <file> --values <file> [options]",
+      "       npm run tp -- inspect  --capability <file> [--json]",
+      "       npm run tp -- diff     <a.json> <b.json>",
       "",
       "  --task    <file>   task contract, e.g. tasks/update-mailing-address.json",
       "  --values  <file>   input values, e.g. values/member-1002.json",
@@ -34,6 +38,9 @@ function usage(): never {
       "                     verified recognizers are added so replay can tell them apart",
       "  --out     <dir>    where compiled capabilities go, default capabilities/",
       "  --capability <file>  a compiled capability, e.g. capabilities/<id>.v1.json",
+      "  --json             inspect: print the summary as JSON",
+      "",
+      "diff exits 0 when the capabilities match, 1 when they differ, 2 on error.",
       "",
       "discover and replay:",
       "  --policy  <file>   default policy.json",
@@ -231,11 +238,59 @@ async function replayCmd(argv: string[]): Promise<number> {
   return result.outcome === "success" ? 0 : 1;
 }
 
+/**
+ * Read and validate a capability without the replay module, so the read-only
+ * commands load nothing that runs a workflow. Errors name the file and the
+ * schema paths that failed, never the values found there.
+ */
+function readCapability(file: string): Capability {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(file, "utf8"));
+  } catch (e) {
+    const reason = e instanceof Error ? ((e as NodeJS.ErrnoException).code ?? e.name) : "error";
+    console.error(`cannot read ${file}: ${reason}`);
+    process.exit(2);
+  }
+  const parsed = Capability.safeParse(raw);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
+    console.error(`${file} is not a valid capability:\n  ${issues.join("\n  ")}`);
+    process.exit(2);
+  }
+  return parsed.data;
+}
+
+function inspectCmd(argv: string[]): number {
+  const capFile = flag(argv, "--capability");
+  if (!capFile) usage();
+  const summary = inspect(readCapability(capFile));
+  console.log(argv.includes("--json") ? JSON.stringify(summary, null, 2) : formatSummary(summary));
+  return 0;
+}
+
+/** Exit codes follow diff(1): 0 the same, 1 different, 2 trouble. */
+function diffCmd(argv: string[]): number {
+  const files = argv.filter((a) => !a.startsWith("--"));
+  if (files.length !== 2) usage();
+  try {
+    const d = diff(readCapability(files[0]!), readCapability(files[1]!));
+    console.log(formatDiff(d));
+    return d.identical ? 0 : 1;
+  } catch (e) {
+    if (!(e instanceof DiffError)) throw e;
+    console.error(e.message);
+    return 2;
+  }
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (cmd === "discover") process.exit(await discover(rest));
   if (cmd === "compile") process.exit(compileCmd(rest));
   if (cmd === "replay") process.exit(await replayCmd(rest));
+  if (cmd === "inspect") process.exit(inspectCmd(rest));
+  if (cmd === "diff") process.exit(diffCmd(rest));
   usage();
 }
 
