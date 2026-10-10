@@ -10,7 +10,7 @@ compile:   trace.json ───────────────────�
 replay:    capability + values → precondition → act → explicit wait → checks → record
 ```
 
-`browser/` is the only module that touches Playwright (observation, locator ladders, masked capture, the policy chokepoint). `discovery/model.ts` is the only LLM SDK import. `compiler/` is a pure function over `contracts/`, and `replay/` is deterministic execution. `workflow/`, `handoff/`, `safety/` and `observability/` are shared by both halves, which differ only in who chooses the next action. Tests enforce three boundaries: replay cannot reach discovery or an LLM SDK, the compiler imports only contracts, and no automation module imports DemoBank.
+`browser/` is the only module that touches Playwright (observation, locator ladders, masked capture, the policy chokepoint). `discovery/model.ts` is the only LLM SDK import. `compiler/` is a pure function over `contracts/`, and `replay/` is deterministic execution. `workflow/`, `handoff/`, `safety/` and `observability/` are shared by both halves, which differ only in who chooses the next action. Tests enforce four boundaries: replay cannot reach discovery or an LLM SDK, the compiler and the read-only `inspect/` import only contracts, and no automation module imports DemoBank.
 
 Each turn the model sees one observation and a one-line ledger of earlier turns. Element ids are scoped to their observation, so a stale reference is refused rather than mis-targeted. The model client is Anthropic-compatible and set in `.env` (DeepSeek by default).
 
@@ -75,4 +75,4 @@ In evidence 08 the repository owner did this by hand: replay handed over at a re
 - **Values under three characters are not tagged or masked.** An example is the state code `MA`; substring-tagging values that short would corrupt ordinary text.
 - **Interference while the agent holds control is not detected.** The next precondition is the only guard.
 - **`deepseek-flash` varies between runs.** The same scenario took 17 to 56 model calls. Prompt caching is not implemented, and the live smoke test does not gate CI.
-- **There is no `inspect` command, version diffing, dashboard or deployment.**
+- **There is no dashboard or deployment.**

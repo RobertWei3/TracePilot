@@ -74,6 +74,20 @@ budgets   : 18 steps | 0 observations | 0 model calls
 evidence  : runs/replay-2026-10-08T04-23-14-098Z
 ```
 
+**5. Read a capability, and compare two versions.** Both commands only read
+files: no browser, no model.
+
+```bash
+npm run tp -- inspect --capability capabilities/demobank.update_mailing_address.v1.json
+npm run tp -- diff capabilities/demobank.update_mailing_address.v1.json \
+  capabilities/demobank.update_mailing_address.v2.json
+```
+
+`inspect` lists the inputs, the outputs and every step, and marks the write and
+its approval gate. `diff` aligns the steps of the two versions by what they do
+rather than by step id, because ids are renumbered when a step is inserted. It
+then reports added, removed and changed steps, inputs, outputs and recognizers.
+
 > Run these commands in your own terminal, not through a tool that captures their
 > output. The approval and hand-over prompts need you to type an answer.
 
@@ -115,6 +129,8 @@ its outputs on the page.
 | `npm run tp -- discover --task <file> --values <file>` | Explores the app with the model and writes a run folder under `runs/`. |
 | `npm run tp -- compile --run <dir> --task <file>` | Turns a successful run into `capabilities/<id>.v<N>.json`. It never overwrites an earlier version. |
 | `npm run tp -- replay --capability <file> --values <file>` | Runs a capability with new inputs, using no model. |
+| `npm run tp -- inspect --capability <file>` | Prints a capability's inputs, outputs, steps and recognizers. Add `--json` for a structured summary. |
+| `npm run tp -- diff <a.json> <b.json>` | Compares two versions of one capability. Exits 0 when they match, 1 when they differ, and 2 on an error, such as two different capabilities. |
 
 Options for `discover` and `replay`:
 
@@ -217,6 +233,7 @@ src/
 ├── discovery/      the model loop, and the only code that calls a model
 ├── compiler/       run → capability
 ├── replay/         runs a capability, with no model
+├── inspect/        reads and compares capabilities, with no browser and no model
 ├── handoff/        intervention prompts, control hand-over, recording a person's actions
 ├── safety/         allowlists, approval rules, redaction
 ├── workflow/       checks and value resolution shared by discovery and replay
@@ -231,7 +248,7 @@ values/             example inputs for each member
 ## Testing
 
 ```bash
-npm test             # 133 tests, against a real browser and the real demo app
+npm test             # 155 tests, against a real browser and the real demo app
 npm run typecheck
 ```
 
