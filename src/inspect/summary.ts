@@ -1,5 +1,5 @@
 import type { Capability, Step } from "../contracts/index.js";
-import { referencesOf, renderCheck, renderFingerprint, renderValue, summarizeTarget } from "./render.js";
+import { leafFields, referencesOf, renderCheck, renderExtract, renderFingerprint, stepTarget } from "./render.js";
 
 export interface InputSummary {
   /** Dotted path to a leaf field, e.g. address.line2. */
@@ -23,8 +23,8 @@ export interface StepSummary {
   phase: Step["phase"];
   action: Step["action"];
   effect: Step["effect"];
-  /** The descriptor in one line; for an approval gate, the fields it shows. */
-  target?: string;
+  /** The descriptor in one line; the URL for a navigate; the fields a gate shows. */
+  target: string;
   precondition: string[];
   /** Input and secret references the step draws on, never their values. */
   values: string[];
@@ -34,7 +34,7 @@ export interface StepSummary {
   unresolved: boolean;
 }
 
-/** A structured view of one capability, for the terminal now and a dashboard later. */
+/** A structured view of one capability: printed by `tp inspect`, or emitted whole by `--json`. */
 export interface InspectSummary {
   capabilityId: string;
   version: number;
@@ -71,7 +71,12 @@ export function inspect(cap: Capability): InspectSummary {
       authoredBy: cap.provenance.authoredBy,
       outcomeRunIds: cap.provenance.outcomeRunIds ?? [],
     },
-    inputs: flattenInputs(cap.inputs),
+    inputs: leafFields(cap.inputs).map(([name, f]) => ({
+      name,
+      type: f.type,
+      optional: f.optional,
+      sensitive: f.sensitive,
+    })),
     outputs: Object.entries(cap.outputs).map(([name, o]) => ({
       name,
       ...(o.pattern !== undefined ? { pattern: o.pattern } : {}),
@@ -87,56 +92,18 @@ export function inspect(cap: Capability): InspectSummary {
 }
 
 function summarizeStep(s: Step): StepSummary {
-  const refs = referencesOf(s.value);
-  if (s.target?.scope?.anchorInput) refs.add(`<input:${s.target.scope.anchorInput}>`);
-  for (const c of [...s.precondition, ...s.checks]) referencesOf(c.value, refs);
-  for (const f of s.diffFields ?? []) referencesOf(f.value, refs);
-
-  let target = s.target ? summarizeTarget(s.target) : undefined;
-  if (s.action === "approval_gate") target = `shows: ${(s.diffFields ?? []).map((f) => f.label).join("; ")}`;
-  else if (s.action === "navigate" && s.value) target = renderValue(s.value);
-
   return {
     stepId: s.stepId,
     index: s.index,
     phase: s.phase,
     action: s.action,
     effect: s.effect,
-    ...(target !== undefined ? { target } : {}),
+    target: stepTarget(s),
     precondition: s.precondition.map(renderCheck),
-    values: [...refs],
+    values: referencesOf(s),
     checks: s.checks.length,
     fingerprint: renderFingerprint(s.surfaceFingerprint),
     authoredBy: s.authoredBy,
     unresolved: s.unresolved,
   };
-}
-
-export type FieldSpecShape = {
-  type: string;
-  description?: string;
-  optional?: boolean;
-  sensitive?: boolean;
-  pattern?: string;
-  properties?: Record<string, FieldSpecShape>;
-};
-
-/** Leaf fields only: an object input is a namespace, its leaves are what a caller supplies. */
-export function leafFields(fields: Record<string, unknown>, prefix = ""): [string, FieldSpecShape][] {
-  return Object.entries(fields as Record<string, FieldSpecShape>).flatMap(([key, f]) =>
-    f.properties ? leafFields(f.properties, `${prefix}${key}.`) : [[`${prefix}${key}`, f] as [string, FieldSpecShape]],
-  );
-}
-
-function flattenInputs(fields: Record<string, unknown>): InputSummary[] {
-  return leafFields(fields).map(([name, f]) => ({
-    name,
-    type: f.type,
-    optional: f.optional ?? false,
-    sensitive: f.sensitive ?? false,
-  }));
-}
-
-export function renderExtract(e: { kind: string; attr?: string; regex?: string }): string {
-  return [e.kind, e.attr ? `@${e.attr}` : "", e.regex !== undefined ? `/${e.regex}/` : ""].filter(Boolean).join(" ");
 }

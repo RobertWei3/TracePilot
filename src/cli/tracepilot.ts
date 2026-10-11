@@ -238,10 +238,13 @@ async function replayCmd(argv: string[]): Promise<number> {
   return result.outcome === "success" ? 0 : 1;
 }
 
+class CapabilityFileError extends Error {}
+
 /**
  * Read and validate a capability without the replay module, so the read-only
  * commands load nothing that runs a workflow. Errors name the file and the
- * schema paths that failed, never the values found there.
+ * schema paths that failed, and only the kind of failure: zod's own messages
+ * can quote the value it found, and the value is not this command's to print.
  */
 function readCapability(file: string): Capability {
   let raw: unknown;
@@ -249,14 +252,12 @@ function readCapability(file: string): Capability {
     raw = JSON.parse(readFileSync(file, "utf8"));
   } catch (e) {
     const reason = e instanceof Error ? ((e as NodeJS.ErrnoException).code ?? e.name) : "error";
-    console.error(`cannot read ${file}: ${reason}`);
-    process.exit(2);
+    throw new CapabilityFileError(`cannot read ${file}: ${reason}`);
   }
   const parsed = Capability.safeParse(raw);
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
-    console.error(`${file} is not a valid capability:\n  ${issues.join("\n  ")}`);
-    process.exit(2);
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.code}`);
+    throw new CapabilityFileError(`${file} is not a valid capability:\n  ${issues.join("\n  ")}`);
   }
   return parsed.data;
 }
@@ -264,9 +265,15 @@ function readCapability(file: string): Capability {
 function inspectCmd(argv: string[]): number {
   const capFile = flag(argv, "--capability");
   if (!capFile) usage();
-  const summary = inspect(readCapability(capFile));
-  console.log(argv.includes("--json") ? JSON.stringify(summary, null, 2) : formatSummary(summary));
-  return 0;
+  try {
+    const summary = inspect(readCapability(capFile));
+    console.log(argv.includes("--json") ? JSON.stringify(summary, null, 2) : formatSummary(summary));
+    return 0;
+  } catch (e) {
+    if (!(e instanceof CapabilityFileError)) throw e;
+    console.error(e.message);
+    return 2;
+  }
 }
 
 /** Exit codes follow diff(1): 0 the same, 1 different, 2 trouble. */
@@ -278,7 +285,7 @@ function diffCmd(argv: string[]): number {
     console.log(formatDiff(d));
     return d.identical ? 0 : 1;
   } catch (e) {
-    if (!(e instanceof DiffError)) throw e;
+    if (!(e instanceof CapabilityFileError || e instanceof DiffError)) throw e;
     console.error(e.message);
     return 2;
   }

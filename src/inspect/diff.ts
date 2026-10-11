@@ -1,18 +1,17 @@
-import type { Capability, Check, Step } from "../contracts/index.js";
+import type { Capability, Check, Descriptor, Step } from "../contracts/index.js";
 import {
   detailTarget,
+  leafFields,
   renderCheck,
+  renderExtract,
   renderFingerprint,
-  renderLocators,
   renderValue,
+  renderWait,
   stableJson,
-  summarizeTarget,
+  stepTarget,
 } from "./render.js";
-import { leafFields, renderExtract } from "./summary.js";
 
-export class DiffError extends Error {
-  override name = "DiffError";
-}
+export class DiffError extends Error {}
 
 export interface FieldChange {
   field: string;
@@ -45,19 +44,23 @@ export interface CapabilityDiff {
   capabilityId: string;
   versions: [number, number];
   /**
-   * Where each capability came from: version, creation time, source run.
-   * Shown, but never counted as a difference -- any two versions differ here,
-   * so counting it would make diff report a change between identical workflows.
+   * Version, creation time, review status and source run. Shown, but never
+   * counted as a difference: any two versions differ here, and status records
+   * whether a person has reviewed the artifact, not what it does.
    */
-  provenance: FieldChange[];
-  /** Capability-level fields that change what replay does: status, origin, session, dialogs. */
+  header: FieldChange[];
+  /** Capability-level fields that change what replay does: origin, session, dialogs. */
   meta: FieldChange[];
   steps: { countA: number; countB: number; added: StepRef[]; removed: StepRef[]; changed: StepChange[] };
   inputs: KeyedChanges;
   outputs: KeyedChanges;
   businessOutcomes: KeyedChanges;
-  /** True when nothing outside `provenance` differs. */
+  /** True when nothing outside `header` differs. */
   identical: boolean;
+}
+
+export function isEmpty(k: { added: unknown[]; removed: unknown[]; changed: unknown[] }): boolean {
+  return k.added.length + k.removed.length + k.changed.length === 0;
 }
 
 /**
@@ -65,24 +68,28 @@ export interface CapabilityDiff {
  *
  * Prose is not compared: a step's `reason`, a check's `describes` and an
  * input's `description` are written by the model and reworded on every
- * discovery, without changing what replay does.
+ * discovery, without changing what replay does. Nor are locator ladders: they
+ * are rebuilt from the page on every discovery, and a control that really
+ * changed shows up in its descriptor and its surface fingerprint instead.
  */
 export function diff(a: Capability, b: Capability): CapabilityDiff {
   if (a.capabilityId !== b.capabilityId) {
     throw new DiffError(`different capabilities: ${a.capabilityId} and ${b.capabilityId}`);
   }
 
-  const provenance = compact([
+  const pa = a.provenance;
+  const pb = b.provenance;
+  const header = compact([
     change("version", a.version, b.version, String),
     change("createdAt", a.createdAt, b.createdAt, String),
-    change("provenance.runId", a.provenance.runId, b.provenance.runId, String),
-    change("provenance.model", a.provenance.model, b.provenance.model, String),
-    change("provenance.authoredBy", a.provenance.authoredBy, b.provenance.authoredBy, (x) => `${x.agent} agent, ${x.human} human`),
-    change("provenance.appFingerprint", a.provenance.appFingerprint, b.provenance.appFingerprint, String),
-    change("provenance.outcomeRunIds", a.provenance.outcomeRunIds ?? [], b.provenance.outcomeRunIds ?? [], (x) => x.join(", ") || "(none)"),
+    change("status", a.status, b.status, String),
+    change("provenance.runId", pa.runId, pb.runId, String),
+    change("provenance.model", pa.model, pb.model, String),
+    change("provenance.authoredBy", pa.authoredBy, pb.authoredBy, (x) => `${x.agent} agent, ${x.human} human`),
+    change("provenance.appFingerprint", pa.appFingerprint, pb.appFingerprint, String),
+    change("provenance.outcomeRunIds", pa.outcomeRunIds ?? [], pb.outcomeRunIds ?? [], (x) => x.join(", ") || "(none)"),
   ]);
   const meta = compact([
-    change("status", a.status, b.status, String),
     change("origin", a.origin, b.origin, String),
     change("surfaceKind", a.surfaceKind, b.surfaceKind, String),
     change("tenantId", a.tenantId, b.tenantId, String),
@@ -100,25 +107,28 @@ export function diff(a: Capability, b: Capability): CapabilityDiff {
     removed: a.steps.filter((_, i) => !pairedA.has(i)).map(stepRef),
     added: b.steps.filter((_, j) => !pairedB.has(j)).map(stepRef),
     changed: pairs.flatMap(([i, j]) => {
-      const changes = compareSteps(a.steps[i]!, b.steps[j]!);
-      return changes.length
-        ? [{ a: a.steps[i]!.stepId, b: b.steps[j]!.stepId, summary: stepRef(b.steps[j]!).summary, changes }]
-        : [];
+      const [x, y] = [a.steps[i]!, b.steps[j]!];
+      const changes = compareSteps(x, y);
+      return changes.length ? [{ a: x.stepId, b: y.stepId, summary: stepRef(y).summary, changes }] : [];
     }),
   };
 
   // Outputs name the step that binds them by id, and ids are positional, so
   // the source is compared through the alignment rather than by its literal id.
-  const bIdOf = new Map(pairs.map(([i, j]) => [a.steps[i]!.stepId, b.steps[j]!.stepId]));
+  const alignedId = new Map(pairs.map(([i, j]) => [a.steps[i]!.stepId, b.steps[j]!.stepId]));
   const outputs = keyed(a.outputs, b.outputs, (x, y) =>
     compact([
       change("type", x.type, y.type, String),
       change("pattern", x.pattern, y.pattern, (p) => p ?? "(none)"),
       change("required", x.required, y.required, String),
       change("extract", x.source.extract, y.source.extract, renderExtract),
-      bIdOf.get(x.source.stepId) === y.source.stepId
+      alignedId.get(x.source.stepId) === y.source.stepId
         ? null
-        : { field: "source", from: x.source.stepId, to: y.source.stepId },
+        : {
+            field: "source",
+            from: `${x.source.stepId} (aligned with ${alignedId.get(x.source.stepId) ?? "no step"})`,
+            to: y.source.stepId,
+          },
     ]),
   );
 
@@ -130,16 +140,13 @@ export function diff(a: Capability, b: Capability): CapabilityDiff {
     ),
   );
 
-  const businessOutcomes = keyed(byCode(a), byCode(b), (x, y) =>
+  const businessOutcomes = keyed(recognizersByCode(a), recognizersByCode(b), (x, y) =>
     compact([change("when", x, y, (w) => w.map(renderCheck).join(" | "))]),
   );
 
-  const identical =
-    meta.length === 0 &&
-    steps.added.length + steps.removed.length + steps.changed.length === 0 &&
-    [inputs, outputs, businessOutcomes].every((k) => k.added.length + k.removed.length + k.changed.length === 0);
+  const identical = meta.length === 0 && [steps, inputs, outputs, businessOutcomes].every(isEmpty);
 
-  return { capabilityId: a.capabilityId, versions: [a.version, b.version], provenance, meta, steps, inputs, outputs, businessOutcomes, identical };
+  return { capabilityId: a.capabilityId, versions: [a.version, b.version], header, meta, steps, inputs, outputs, businessOutcomes, identical };
 }
 
 /**
@@ -150,30 +157,35 @@ export function diff(a: Capability, b: Capability): CapabilityDiff {
  * by a new discovery renumbers every step after it, and position shifts the
  * same way; hand-written capabilities do not even agree on where numbering
  * starts. So steps are aligned by what they do: a longest common subsequence
- * over (phase, action, role, accessible name), which keeps order and survives
- * insertions and deletions.
+ * over (phase, action, role, name), which keeps order and survives insertions
+ * and deletions.
  *
- * The accessible name is in that key, so a renamed control would fall out of
- * the subsequence as one removal and one addition -- yet a rename is exactly
- * the drift T4's fingerprint warnings point at. A second pass therefore pairs
- * what is left within each gap between matched steps, in order, when phase,
- * action and role agree, and the rename is reported as a change to the target.
+ * The name is the accessible name when the control has one. Unnamed controls
+ * fall back to their label, then to the text beside them: DemoBank's City,
+ * State and ZIP boxes have no accessible name, and keyed on role alone they
+ * would be indistinguishable, so removing City would be read as removing ZIP.
+ *
+ * The name is in the key, so a renamed control would fall out of the
+ * subsequence as one removal and one addition -- yet a rename is exactly the
+ * drift T4's fingerprint warnings point at. A second pass therefore pairs what
+ * is left within each gap between matched steps, in order, when phase, action
+ * and role agree, and the rename is reported as a change to the target.
  */
-export function align(a: Step[], b: Step[]): [number, number][] {
-  const key = (s: Step) => stableJson([s.phase, s.action, s.target?.role ?? null, s.target?.accessibleName ?? null]);
-  const ka = a.map(key);
-  const kb = b.map(key);
+function align(a: Step[], b: Step[]): [number, number][] {
+  const key = (s: Step) => stableJson([s.phase, s.action, s.target?.role ?? null, nameOf(s.target)]);
+  const keysA = a.map(key);
+  const keysB = b.map(key);
 
   // lcs[i][j] = length of the LCS of a[i..] and b[j..].
   const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) {
     for (let j = b.length - 1; j >= 0; j--) {
-      lcs[i]![j] = ka[i] === kb[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+      lcs[i]![j] = keysA[i] === keysB[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
     }
   }
   const anchors: [number, number][] = [];
   for (let i = 0, j = 0; i < a.length && j < b.length; ) {
-    if (ka[i] === kb[j]) anchors.push([i++, j++]);
+    if (keysA[i] === keysB[j]) anchors.push([i++, j++]);
     else if (lcs[i + 1]![j]! >= lcs[i]![j + 1]!) i++;
     else j++;
   }
@@ -182,36 +194,38 @@ export function align(a: Step[], b: Step[]): [number, number][] {
   const pairs: [number, number][] = [];
   let prevA = -1;
   let prevB = -1;
-  for (const [ai, bj] of [...anchors, [a.length, b.length] as [number, number]]) {
-    let next = prevB + 1;
-    for (let i = prevA + 1; i < ai; i++) {
-      for (let j = next; j < bj; j++) {
+  for (const [anchorA, anchorB] of [...anchors, [a.length, b.length] as [number, number]]) {
+    let nextB = prevB + 1;
+    for (let i = prevA + 1; i < anchorA; i++) {
+      for (let j = nextB; j < anchorB; j++) {
         if (shape(a[i]!) === shape(b[j]!)) {
           pairs.push([i, j]);
-          next = j + 1;
+          nextB = j + 1;
           break;
         }
       }
     }
-    if (ai < a.length) pairs.push([ai, bj]);
-    prevA = ai;
-    prevB = bj;
+    if (anchorA < a.length) pairs.push([anchorA, anchorB]);
+    prevA = anchorA;
+    prevB = anchorB;
   }
   return pairs.sort(([x], [y]) => x - y);
 }
 
+function nameOf(d: Descriptor | undefined): string | null {
+  return d?.accessibleName ?? d?.labelText ?? d?.nearbyText ?? null;
+}
+
 function compareSteps(x: Step, y: Step): FieldChange[] {
-  const render = (cs: Check[]) => (cs.length ? cs.map(renderCheck).join("; ") : "(none)");
+  const checks = (cs: Check[]) => (cs.length ? cs.map(renderCheck).join("; ") : "(none)");
+  const descriptor = (t: Descriptor | undefined) => (t ? (({ candidates: _, ...rest }) => rest)(t) : undefined);
   return compact([
-    change("target", x.target, y.target, (t) => (t ? detailTarget(t) : "(none)")),
-    change("locators", x.target?.candidates, y.target?.candidates, (c) => (c ? renderLocators(c) : "(none)")),
+    change("target", descriptor(x.target), descriptor(y.target), (t) => (t ? detailTarget(t) : "(none)")),
     change("effect", x.effect, y.effect, String),
     change("value", x.value, y.value, (v) => (v ? renderValue(v) : "(none)")),
-    change("precondition", withoutProse(x.precondition), withoutProse(y.precondition), render),
-    change("checks", withoutProse(x.checks), withoutProse(y.checks), render),
-    change("waitFor", x.waitFor, y.waitFor, (w) =>
-      w ? [w.kind, w.pattern ? `"${w.pattern}"` : "", w.target ? summarizeTarget(w.target) : "", `${w.timeoutMs}ms`].filter(Boolean).join(" ") : "(none)",
-    ),
+    change("precondition", withoutProse(x.precondition), withoutProse(y.precondition), checks),
+    change("checks", withoutProse(x.checks), withoutProse(y.checks), checks),
+    change("waitFor", x.waitFor, y.waitFor, renderWait),
     change("extractAs", x.extractAs, y.extractAs, (e) => e ?? "(none)"),
     change("diffFields", x.diffFields, y.diffFields, (fs) =>
       fs ? fs.map((f) => `"${f.label}" = ${renderValue(f.value)}`).join("; ") : "(none)",
@@ -254,7 +268,7 @@ function keyed<T>(
 }
 
 /** Recognizers by code; one code may be recognised by several conditions. */
-function byCode(cap: Capability): Record<string, Check[]> {
+function recognizersByCode(cap: Capability): Record<string, Check[]> {
   const out: Record<string, Check[]> = {};
   for (const o of cap.businessOutcomes) (out[o.code] ??= []).push(...withoutProse([o.when]));
   for (const k of Object.keys(out)) out[k]!.sort((x, y) => stableJson(x).localeCompare(stableJson(y)));
@@ -266,8 +280,7 @@ function withoutProse(cs: Check[]): Check[] {
 }
 
 function stepRef(s: Step): StepRef {
-  const target = s.action === "approval_gate" ? "" : s.target ? ` ${summarizeTarget(s.target)}` : "";
-  return { stepId: s.stepId, summary: `${s.phase} ${s.action}${target}` };
+  return { stepId: s.stepId, summary: [s.phase, s.action, stepTarget(s)].filter(Boolean).join(" ") };
 }
 
 function compact<T>(xs: (T | null)[]): T[] {

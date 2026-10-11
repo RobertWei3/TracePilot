@@ -68,6 +68,27 @@ test("one inserted step is one addition, not a cascade of renumbered steps", () 
   assert.equal(d.identical, false);
 });
 
+test("steps with no accessible name are told apart by their caption", () => {
+  // City, State and ZIP are unnamed textboxes; only the text beside them
+  // differs. Removing City must remove City, not shift State into its place.
+  const steps = compiled.steps
+    .filter((s) => s.stepId !== "s08")
+    .map((s, i) => ({ ...s, index: i, stepId: `s${String(i + 1).padStart(2, "0")}` }));
+  const d = diff(compiled, { ...compiled, version: 2, steps });
+  assert.deepEqual(d.steps.removed.map((r) => r.stepId), ["s08"]);
+  assert.match(d.steps.removed[0]!.summary, /City/);
+  assert.deepEqual(d.steps.added, []);
+  assert.deepEqual(d.steps.changed, []);
+});
+
+test("locator ladders and review status are not workflow changes", () => {
+  const steps = structuredClone(compiled.steps);
+  steps[1]!.target!.candidates = [{ rank: 1, strategy: "structural", expr: "input[role=textbox]" }];
+  const d = diff(compiled, { ...compiled, status: "needs_review", steps });
+  assert.equal(d.identical, true);
+  assert.ok(d.header.some((c) => c.field === "status"), "status is still shown");
+});
+
 test("a renamed button is one changed step, not a removal and an addition", () => {
   // The case T4's fingerprint warnings lead to: rediscover, recompile, diff.
   // The accessible name is part of the alignment key, so only the second

@@ -133,8 +133,19 @@ export function fingerprintText(d: Descriptor): string[] {
 /** A well-formed surface fingerprint, exactly as browser/descriptor.ts emits it. */
 export const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{16}$/;
 
-/** Typed declaration of one input or output field. */
-export const FieldSpec: z.ZodTypeAny = z.lazy(() =>
+/** Typed declaration of one input or output field, as parsed (defaults applied). */
+export interface FieldSpec {
+  type: "string" | "object";
+  description?: string;
+  sensitive: boolean;
+  optional: boolean;
+  pattern?: string;
+  properties?: Record<string, FieldSpec>;
+}
+
+// Recursive, so the type is written out rather than inferred; the input side
+// stays loose because defaults fill sensitive and optional.
+export const FieldSpec: z.ZodType<FieldSpec, z.ZodTypeDef, unknown> = z.lazy(() =>
   z
     .object({
       type: z.enum(["string", "object"]),

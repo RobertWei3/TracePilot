@@ -248,7 +248,7 @@ values/             example inputs for each member
 ## Testing
 
 ```bash
-npm test             # 155 tests, against a real browser and the real demo app
+npm test             # 157 tests, against a real browser and the real demo app
 npm run typecheck
 ```
 
