@@ -100,6 +100,25 @@ test("compiler is a pure function of the contracts", () => {
   assert.deepEqual(offenders, [], `compiler may import only contracts:\n${offenders.join("\n")}`);
 });
 
+test("inspect is a pure function of the contracts", () => {
+  // inspect and diff only read a capability. Reaching the browser, the run
+  // store or the model would let a read-only command launch something, write
+  // something, or spend a model call.
+  const offenders: string[] = [];
+  for (const file of tsFiles(SRC)) {
+    if (moduleArea(file) !== "inspect") continue;
+    for (const spec of importsOf(file)) {
+      const local = resolveLocal(file, spec);
+      if (!local) offenders.push(`${path.relative(".", file)} -> ${spec} (external)`);
+      else if (!["inspect", "contracts"].includes(moduleArea(local))) {
+        offenders.push(`${path.relative(".", file)} -> ${spec}`);
+      }
+    }
+  }
+  assert.ok(tsFiles(SRC).some((f) => moduleArea(f) === "inspect"), "src/inspect/ should exist");
+  assert.deepEqual(offenders, [], `inspect may import only contracts:\n${offenders.join("\n")}`);
+});
+
 test("exactly one module reaches an LLM SDK", () => {
   // The converse of the rule above. Replay staying LLM-free is only meaningful
   // if the dependency is confined somewhere nameable, rather than spreading to
