@@ -15,6 +15,7 @@ const el = (id: string, over: Partial<Observation["elements"][number]> = {}) => 
   name: "",
   labelText: "",
   nearbyText: "",
+  captionText: "",
   valueVerdict: { kind: "empty" } as const,
   redacted: false,
   locatorKey: "div>input",
