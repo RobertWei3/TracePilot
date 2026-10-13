@@ -281,9 +281,9 @@ function diffCmd(argv: string[]): number {
   const files = argv.filter((a) => !a.startsWith("--"));
   if (files.length !== 2) usage();
   try {
-    const d = diff(readCapability(files[0]!), readCapability(files[1]!));
-    console.log(formatDiff(d));
-    return d.identical ? 0 : 1;
+    const result = diff(readCapability(files[0]!), readCapability(files[1]!));
+    console.log(formatDiff(result));
+    return result.identical ? 0 : 1;
   } catch (e) {
     if (!(e instanceof CapabilityFileError || e instanceof DiffError)) throw e;
     console.error(e.message);

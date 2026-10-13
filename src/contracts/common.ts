@@ -130,6 +130,18 @@ export function fingerprintText(d: Descriptor): string[] {
   return [d.accessibleName ?? "", d.labelText ?? "", d.scope?.containerName ?? ""];
 }
 
+/** A descriptor in one line, for refusals, run records and `tp inspect`. */
+export function summarize(d: Descriptor): string {
+  const bits = [d.role];
+  if (d.accessibleName) bits.push(`"${d.accessibleName}"`);
+  else if (d.labelText) bits.push(`labelled "${d.labelText}"`);
+  else if (d.nearbyText) bits.push(`near "${d.nearbyText}"`);
+  if (d.scope?.anchorInput) bits.push(`in the row for {input:${d.scope.anchorInput}}`);
+  else if (d.scope?.containerName) bits.push(`in "${d.scope.containerName}"`);
+  if (d.nth !== undefined) bits.push(`#${d.nth}`);
+  return bits.join(" ");
+}
+
 /** A well-formed surface fingerprint, exactly as browser/descriptor.ts emits it. */
 export const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{16}$/;
 

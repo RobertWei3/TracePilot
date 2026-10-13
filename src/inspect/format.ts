@@ -59,13 +59,13 @@ function formatStep(step: StepSummary): string[] {
   return [head.filter((x) => x !== "").join(" ").trimEnd(), `${" ".repeat(11)}${detail.filter(Boolean).join("  |  ")}`];
 }
 
-export function formatDiff(d: CapabilityDiff): string {
-  const [versionA, versionB] = d.versions;
-  const lines = [`${d.capabilityId}  v${versionA} -> v${versionB}`, ...d.header.map((c) => `  ${fieldLine(c)}`)];
+export function formatDiff(result: CapabilityDiff): string {
+  const [versionA, versionB] = result.versions;
+  const lines = [`${result.capabilityId}  v${versionA} -> v${versionB}`, ...result.header.map((c) => `  ${fieldLine(c)}`)];
 
-  if (d.meta.length) lines.push("", "capability", ...d.meta.map((c) => `  ~ ${fieldLine(c)}`));
+  if (result.meta.length) lines.push("", "capability", ...result.meta.map((c) => `  ~ ${fieldLine(c)}`));
 
-  const steps = d.steps;
+  const steps = result.steps;
   if (!isEmpty(steps)) {
     lines.push("", `steps  ${steps.countA} -> ${steps.countB}`);
     for (const r of steps.removed) lines.push(`  - ${r.stepId}  ${r.summary}`);
@@ -75,20 +75,20 @@ export function formatDiff(d: CapabilityDiff): string {
       for (const f of c.changes) lines.push(`      ${fieldLine(f)}`);
     }
   }
-  section(lines, "inputs", d.inputs);
-  section(lines, "outputs", d.outputs);
-  section(lines, "business outcomes", d.businessOutcomes);
+  section(lines, "inputs", result.inputs);
+  section(lines, "outputs", result.outputs);
+  section(lines, "business outcomes", result.businessOutcomes);
 
-  lines.push("", d.identical ? "no differences" : "capabilities differ");
+  lines.push("", result.identical ? "no differences" : "capabilities differ");
   return lines.join("\n");
 }
 
-function section(lines: string[], title: string, k: KeyedChanges): void {
-  if (isEmpty(k)) return;
+function section(lines: string[], title: string, changes: KeyedChanges): void {
+  if (isEmpty(changes)) return;
   lines.push("", title);
-  for (const n of k.removed) lines.push(`  - ${n}`);
-  for (const n of k.added) lines.push(`  + ${n}`);
-  for (const c of k.changed) {
+  for (const n of changes.removed) lines.push(`  - ${n}`);
+  for (const n of changes.added) lines.push(`  + ${n}`);
+  for (const c of changes.changed) {
     lines.push(`  ~ ${c.name}`);
     for (const f of c.changes) lines.push(`      ${fieldLine(f)}`);
   }
