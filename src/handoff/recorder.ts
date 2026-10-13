@@ -88,13 +88,19 @@ function installRecorder(cfg: {
     return { name: "", labelText: "" };
   };
 
-  const nearbyOf = (el: Element): string => {
+  const captionOf = (el: Element): string => {
     let prev = el.previousElementSibling;
     while (prev) {
       const t = textOf(prev);
       if (t && t.length <= 60 && !prev.querySelector("input, select, textarea, button, a")) return t;
       prev = prev.previousElementSibling;
     }
+    return "";
+  };
+
+  const nearbyOf = (el: Element): string => {
+    const caption = captionOf(el);
+    if (caption) return caption;
     const row = el.closest(".fieldrow, td, th, li, p, div");
     const rowText = textOf(row);
     return rowText.length <= 80 ? rowText : rowText.slice(0, 80);
@@ -151,6 +157,7 @@ function installRecorder(cfg: {
         name: tag(names.name),
         labelText: tag(names.labelText),
         nearbyText: tag(nearbyOf(el)),
+        captionText: tag(captionOf(el)),
         value: "",
         regionId: "human:rg",
         regionName: regionOf(el),

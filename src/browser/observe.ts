@@ -100,7 +100,15 @@ export type ObservedElement = {
   tagName: string;
   name: string;
   labelText: string;
+  /** Context for the model: the caption beside the control, else its row's text. */
   nearbyText: string;
+  /**
+   * The caption beside the control alone, or "". The only nearby text a
+   * descriptor keeps: a row's text is the record being worked on -- a member's
+   * name and address -- which a model may read but a capability, replayed for
+   * other members, must not carry, and which matches nothing for them anyway.
+   */
+  captionText: string;
   /**
    * Never a literal. The agent learns whether a field is empty, holds a value
    * this run supplied (and which), holds something else, or is masked.
@@ -305,16 +313,22 @@ export function buildObservation(cfg: ObserveConfig): Observation {
    * uses bare <div> captions with no `for`, which is exactly the case a real
    * legacy application presents.
    */
-  const nearbyOf = (el: Element): string => {
-    const row = el.closest(".fieldrow, td, th, li, p, div");
-    if (!row) return "";
+  const captionOf = (el: Element): string => {
+    if (!el.closest(".fieldrow, td, th, li, p, div")) return "";
     let prev = el.previousElementSibling;
     while (prev) {
       const t = safeText(prev);
       if (t && t.length <= 60 && !prev.querySelector("input, select, textarea, button, a")) return t;
       prev = prev.previousElementSibling;
     }
-    const rowText = safeText(row);
+    return "";
+  };
+
+  const nearbyOf = (el: Element): string => {
+    const caption = captionOf(el);
+    if (caption) return caption;
+    const row = el.closest(".fieldrow, td, th, li, p, div");
+    const rowText = row ? safeText(row) : "";
     return rowText.length <= 80 ? rowText : rowText.slice(0, 80);
   };
 
@@ -456,6 +470,7 @@ export function buildObservation(cfg: ObserveConfig): Observation {
       name,
       labelText,
       nearbyText: nearbyOf(el),
+      captionText: captionOf(el),
       valueVerdict: verdictFor(el),
       redacted,
       locatorKey: locatorKeyOf(el),

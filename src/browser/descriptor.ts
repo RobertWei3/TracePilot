@@ -37,8 +37,10 @@ export function describe(
   let rank = 1;
   if (el.name) candidates.push({ rank: rank++, strategy: "role+name", expr: `${el.role}|${el.name}` });
   if (el.labelText) candidates.push({ rank: rank++, strategy: "label", expr: el.labelText });
-  if (el.nearbyText && el.nearbyText !== el.labelText) {
-    candidates.push({ rank: rank++, strategy: "text-scoped", expr: el.nearbyText });
+  // The caption, not nearbyText: a row's text is the subject's record (see
+  // ObservedElement.captionText) and must not be frozen into the artifact.
+  if (el.captionText && el.captionText !== el.labelText) {
+    candidates.push({ rank: rank++, strategy: "text-scoped", expr: el.captionText });
   }
   candidates.push({ rank: rank++, strategy: "structural", expr: `${el.tagName}[role=${el.role}]` });
 
@@ -46,7 +48,7 @@ export function describe(
     role: el.role,
     ...(el.name ? { accessibleName: el.name } : {}),
     ...(el.labelText ? { labelText: el.labelText } : {}),
-    ...(el.nearbyText ? { nearbyText: el.nearbyText.slice(0, 120) } : {}),
+    ...(el.captionText ? { nearbyText: el.captionText.slice(0, 120) } : {}),
     tagName: el.tagName,
     ...(el.regionName && el.regionName !== "page"
       ? {

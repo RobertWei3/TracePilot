@@ -350,3 +350,27 @@ test("a screenshot masks what the text records tag: credentials and input values
   // And not everything: the page's own furniture stays legible.
   assert.equal(isMaskColour(await meanColour(shot.buffer!, button)), false, "the Review button was masked too");
 });
+
+test("a descriptor keeps the caption beside a control, not the record around it", async () => {
+  // The Submit button has no caption of its own, so the nearby text the model
+  // reads is the review panel: the member's name and current address. That is
+  // this run's subject, which the model may see, but a capability is replayed
+  // for other members and must not carry it -- and would match nothing for them.
+  await reset();
+  await surface.navigate(`${app.baseUrl}/members/M-1002/edit`);
+  await surface.page.getByRole("button", { name: "Review changes" }).click();
+  const obs = await surface.observe();
+
+  const submit = obs.elements.find((e) => e.role === "button" && e.name === "Submit change");
+  assert.ok(submit, "expected the Submit change button");
+  assert.ok(submit.nearbyText.includes("Whitfield"), "the model still sees the panel");
+  const d = describeEl(submit);
+  assert.equal(d.nearbyText, undefined);
+  assert.equal(JSON.stringify(d).includes("Whitfield"), false);
+  assert.equal((await surface.locate(d)).ok, true);
+
+  // A field with a caption keeps it: that is what tells City from State.
+  await surface.navigate(`${app.baseUrl}/members/M-1002/edit`);
+  const fields = (await surface.observe()).elements.filter((e) => e.role === "textbox");
+  assert.ok(fields.map((e) => describeEl(e)).some((x) => x.nearbyText === "City"));
+});
