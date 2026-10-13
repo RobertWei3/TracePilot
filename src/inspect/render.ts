@@ -1,5 +1,6 @@
 import {
   FINGERPRINT_PATTERN,
+  summarize,
   type Capability,
   type Check,
   type Descriptor,
@@ -17,22 +18,6 @@ import {
 
 type Extract = Capability["outputs"][string]["source"]["extract"];
 
-/**
- * The same shape as summarize() in browser/descriptor.ts, which this module
- * cannot import: inspect depends on contracts/ alone, so that reading a
- * capability never loads the code that drives a browser.
- */
-export function summarizeTarget(d: Descriptor): string {
-  const bits = [d.role];
-  if (d.accessibleName) bits.push(`"${d.accessibleName}"`);
-  else if (d.labelText) bits.push(`labelled "${d.labelText}"`);
-  else if (d.nearbyText) bits.push(`near "${d.nearbyText}"`);
-  if (d.scope?.anchorInput) bits.push(`in the row for {input:${d.scope.anchorInput}}`);
-  else if (d.scope?.containerName) bits.push(`in "${d.scope.containerName}"`);
-  if (d.nth !== undefined) bits.push(`#${d.nth}`);
-  return bits.join(" ");
-}
-
 /** Every identifying field of a descriptor, for when the summary alone hides a change. */
 export function detailTarget(d: Omit<Descriptor, "candidates">): string {
   const bits = [`${d.role} <${d.tagName}>`];
@@ -49,22 +34,22 @@ export function detailTarget(d: Omit<Descriptor, "candidates">): string {
 export function stepTarget(s: Step): string {
   if (s.action === "approval_gate") return `shows: ${(s.diffFields ?? []).map((f) => f.label).join("; ")}`;
   if (s.action === "navigate" && s.value) return renderValue(s.value);
-  return s.target ? summarizeTarget(s.target) : "";
+  return s.target ? summarize(s.target) : "";
 }
 
 export function renderValue(v: ValueRef): string {
   if ("input" in v) return `<input:${v.input}>`;
   if ("secret" in v) return `<secret:${v.secret}>`;
   if ("const" in v) return JSON.stringify(v.const);
-  const t = v.transform;
-  if (t.op === "template") return `template ${JSON.stringify(t.format ?? "")}`;
-  return `${t.op}(${t.arg ? renderValue(t.arg) : ""})`;
+  const transform = v.transform;
+  if (transform.op === "template") return `template ${JSON.stringify(transform.format ?? "")}`;
+  return `${transform.op}(${transform.arg ? renderValue(transform.arg) : ""})`;
 }
 
 export function renderCheck(c: Check): string {
   const bits: string[] = [c.kind];
   if (c.pattern !== undefined) bits.push(`"${c.pattern}"`);
-  if (c.target) bits.push(summarizeTarget(c.target));
+  if (c.target) bits.push(summarize(c.target));
   if (c.value) bits.push(renderValue(c.value));
   return bits.join(" ");
 }
@@ -73,7 +58,7 @@ export function renderWait(w: Step["waitFor"]): string {
   if (!w) return "(none)";
   const bits: string[] = [w.kind];
   if (w.pattern) bits.push(`"${w.pattern}"`);
-  if (w.target) bits.push(summarizeTarget(w.target));
+  if (w.target) bits.push(summarize(w.target));
   bits.push(`${w.timeoutMs}ms`);
   return bits.join(" ");
 }

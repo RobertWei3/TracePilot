@@ -3,6 +3,10 @@ import type { Locator, Page } from "playwright";
 import { fingerprintText, type Descriptor, type LocatorCandidate } from "../contracts/index.js";
 import type { ObservedElement } from "./observe.js";
 
+// Defined in contracts/ so inspect/ can print descriptors without loading
+// this module; re-exported for every caller that already imports it from here.
+export { summarize } from "../contracts/index.js";
+
 /**
  * Turn an observed element into a semantic descriptor plus an ordered ladder of
  * concrete strategies.
@@ -182,15 +186,4 @@ export async function resolve(
     }
   }
   return { ok: false, tried };
-}
-
-export function summarize(d: Descriptor): string {
-  const bits = [d.role];
-  if (d.accessibleName) bits.push(`"${d.accessibleName}"`);
-  else if (d.labelText) bits.push(`labelled "${d.labelText}"`);
-  else if (d.nearbyText) bits.push(`near "${d.nearbyText}"`);
-  if (d.scope?.anchorInput) bits.push(`in the row for {input:${d.scope.anchorInput}}`);
-  else if (d.scope?.containerName) bits.push(`in "${d.scope.containerName}"`);
-  if (d.nth !== undefined) bits.push(`#${d.nth}`);
-  return bits.join(" ");
 }

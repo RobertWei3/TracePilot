@@ -59,8 +59,8 @@ export interface CapabilityDiff {
   identical: boolean;
 }
 
-export function isEmpty(k: { added: unknown[]; removed: unknown[]; changed: unknown[] }): boolean {
-  return k.added.length + k.removed.length + k.changed.length === 0;
+export function isEmpty(changes: { added: unknown[]; removed: unknown[]; changed: unknown[] }): boolean {
+  return changes.added.length + changes.removed.length + changes.changed.length === 0;
 }
 
 /**
@@ -77,17 +77,17 @@ export function diff(a: Capability, b: Capability): CapabilityDiff {
     throw new DiffError(`different capabilities: ${a.capabilityId} and ${b.capabilityId}`);
   }
 
-  const pa = a.provenance;
-  const pb = b.provenance;
+  const provA = a.provenance;
+  const provB = b.provenance;
   const header = compact([
     change("version", a.version, b.version, String),
     change("createdAt", a.createdAt, b.createdAt, String),
     change("status", a.status, b.status, String),
-    change("provenance.runId", pa.runId, pb.runId, String),
-    change("provenance.model", pa.model, pb.model, String),
-    change("provenance.authoredBy", pa.authoredBy, pb.authoredBy, (x) => `${x.agent} agent, ${x.human} human`),
-    change("provenance.appFingerprint", pa.appFingerprint, pb.appFingerprint, String),
-    change("provenance.outcomeRunIds", pa.outcomeRunIds ?? [], pb.outcomeRunIds ?? [], (x) => x.join(", ") || "(none)"),
+    change("provenance.runId", provA.runId, provB.runId, String),
+    change("provenance.model", provA.model, provB.model, String),
+    change("provenance.authoredBy", provA.authoredBy, provB.authoredBy, (x) => `${x.agent} agent, ${x.human} human`),
+    change("provenance.appFingerprint", provA.appFingerprint, provB.appFingerprint, String),
+    change("provenance.outcomeRunIds", provA.outcomeRunIds ?? [], provB.outcomeRunIds ?? [], (x) => x.join(", ") || "(none)"),
   ]);
   const meta = compact([
     change("origin", a.origin, b.origin, String),
@@ -107,41 +107,41 @@ export function diff(a: Capability, b: Capability): CapabilityDiff {
     removed: a.steps.filter((_, i) => !pairedA.has(i)).map(stepRef),
     added: b.steps.filter((_, j) => !pairedB.has(j)).map(stepRef),
     changed: pairs.flatMap(([i, j]) => {
-      const [x, y] = [a.steps[i]!, b.steps[j]!];
-      const changes = compareSteps(x, y);
-      return changes.length ? [{ a: x.stepId, b: y.stepId, summary: stepRef(y).summary, changes }] : [];
+      const [stepA, stepB] = [a.steps[i]!, b.steps[j]!];
+      const changes = compareSteps(stepA, stepB);
+      return changes.length ? [{ a: stepA.stepId, b: stepB.stepId, summary: stepRef(stepB).summary, changes }] : [];
     }),
   };
 
   // Outputs name the step that binds them by id, and ids are positional, so
   // the source is compared through the alignment rather than by its literal id.
   const alignedId = new Map(pairs.map(([i, j]) => [a.steps[i]!.stepId, b.steps[j]!.stepId]));
-  const outputs = keyed(a.outputs, b.outputs, (x, y) =>
+  const outputs = keyed(a.outputs, b.outputs, (before, after) =>
     compact([
-      change("type", x.type, y.type, String),
-      change("pattern", x.pattern, y.pattern, (p) => p ?? "(none)"),
-      change("required", x.required, y.required, String),
-      change("extract", x.source.extract, y.source.extract, renderExtract),
-      alignedId.get(x.source.stepId) === y.source.stepId
+      change("type", before.type, after.type, String),
+      change("pattern", before.pattern, after.pattern, (p) => p ?? "(none)"),
+      change("required", before.required, after.required, String),
+      change("extract", before.source.extract, after.source.extract, renderExtract),
+      alignedId.get(before.source.stepId) === after.source.stepId
         ? null
         : {
             field: "source",
-            from: `${x.source.stepId} (aligned with ${alignedId.get(x.source.stepId) ?? "no step"})`,
-            to: y.source.stepId,
+            from: `${before.source.stepId} (aligned with ${alignedId.get(before.source.stepId) ?? "no step"})`,
+            to: after.source.stepId,
           },
     ]),
   );
 
-  const inputs = keyed(Object.fromEntries(leafFields(a.inputs)), Object.fromEntries(leafFields(b.inputs)), (x, y) =>
+  const inputs = keyed(Object.fromEntries(leafFields(a.inputs)), Object.fromEntries(leafFields(b.inputs)), (before, after) =>
     compact(
       (["type", "optional", "sensitive", "pattern"] as const).map((k) =>
-        change(k, x[k], y[k], (v) => (v === undefined ? "(none)" : String(v))),
+        change(k, before[k], after[k], (v) => (v === undefined ? "(none)" : String(v))),
       ),
     ),
   );
 
-  const businessOutcomes = keyed(recognizersByCode(a), recognizersByCode(b), (x, y) =>
-    compact([change("when", x, y, (w) => w.map(renderCheck).join(" | "))]),
+  const businessOutcomes = keyed(recognizersByCode(a), recognizersByCode(b), (before, after) =>
+    compact([change("when", before, after, (w) => w.map(renderCheck).join(" | "))]),
   );
 
   const identical = meta.length === 0 && [steps, inputs, outputs, businessOutcomes].every(isEmpty);
@@ -216,23 +216,23 @@ function nameOf(d: Descriptor | undefined): string | null {
   return d?.accessibleName ?? d?.labelText ?? d?.nearbyText ?? null;
 }
 
-function compareSteps(x: Step, y: Step): FieldChange[] {
+function compareSteps(before: Step, after: Step): FieldChange[] {
   const checks = (cs: Check[]) => (cs.length ? cs.map(renderCheck).join("; ") : "(none)");
   const descriptor = (t: Descriptor | undefined) => (t ? (({ candidates: _, ...rest }) => rest)(t) : undefined);
   return compact([
-    change("target", descriptor(x.target), descriptor(y.target), (t) => (t ? detailTarget(t) : "(none)")),
-    change("effect", x.effect, y.effect, String),
-    change("value", x.value, y.value, (v) => (v ? renderValue(v) : "(none)")),
-    change("precondition", withoutProse(x.precondition), withoutProse(y.precondition), checks),
-    change("checks", withoutProse(x.checks), withoutProse(y.checks), checks),
-    change("waitFor", x.waitFor, y.waitFor, renderWait),
-    change("extractAs", x.extractAs, y.extractAs, (e) => e ?? "(none)"),
-    change("diffFields", x.diffFields, y.diffFields, (fs) =>
+    change("target", descriptor(before.target), descriptor(after.target), (t) => (t ? detailTarget(t) : "(none)")),
+    change("effect", before.effect, after.effect, String),
+    change("value", before.value, after.value, (v) => (v ? renderValue(v) : "(none)")),
+    change("precondition", withoutProse(before.precondition), withoutProse(after.precondition), checks),
+    change("checks", withoutProse(before.checks), withoutProse(after.checks), checks),
+    change("waitFor", before.waitFor, after.waitFor, renderWait),
+    change("extractAs", before.extractAs, after.extractAs, (e) => e ?? "(none)"),
+    change("diffFields", before.diffFields, after.diffFields, (fs) =>
       fs ? fs.map((f) => `"${f.label}" = ${renderValue(f.value)}`).join("; ") : "(none)",
     ),
-    change("authoredBy", x.authoredBy, y.authoredBy, String),
-    change("unresolved", x.unresolved, y.unresolved, String),
-    change("surfaceFingerprint", x.surfaceFingerprint, y.surfaceFingerprint, renderFingerprint),
+    change("authoredBy", before.authoredBy, after.authoredBy, String),
+    change("unresolved", before.unresolved, after.unresolved, String),
+    change("surfaceFingerprint", before.surfaceFingerprint, after.surfaceFingerprint, renderFingerprint),
   ]);
 }
 
